@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.articleproducer.sample</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/curl</string>
+    <string>-s</string>
+    <string>-o</string>
+    <string>/dev/null</string>
+    <string>http://localhost:3000/api/cron/sample</string>
+  </array>
+
+  <key>StartInterval</key>
+  <integer>10800</integer>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/com.articleproducer.sample.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/tmp/com.articleproducer.sample.err</string>
+</dict>
+</plist>
