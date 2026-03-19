@@ -117,8 +117,6 @@ export function keywordFilter(title: string): "pass" | "maybe" | "reject" {
 
 // ===== 第二层：AI 精筛 =====
 
-import { withRetry } from "@/lib/ai/retry";
-
 const DASHSCOPE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
 
 interface ClassificationResult {
@@ -127,50 +125,80 @@ interface ClassificationResult {
   confidence: number;
 }
 
+function extractDomain(url: string): string {
+  try {
+    return new URL(url).hostname.replace("www.", "");
+  } catch {
+    return "";
+  }
+}
+
 /**
  * 第二层 AI 分类
- * 将一批标题发给 Qwen（便宜+快），判断是否属于 AI/科技前沿领域
- * 单次调用处理所有标题，成本 < $0.01
+ *
+ * 设计原则（基于调研）：
+ * 1. 正面描述意图，不做反面清单（避免粉色大象问题）
+ * 2. 用概念性描述而非关键词列表（泛化能力更强）
+ * 3. 输入 title + URL（URL 域名是强分类信号）
+ * 4. 6-8 个 few-shot 示例（含边界案例 + 推理过程）
+ * 5. 输出要求包含 reason（强制 AI 思考，提升准确率）
  */
 export async function aiClassifyBatch(
-  titles: { id: number; title: string }[]
+  titles: { id: number; title: string; url?: string }[]
 ): Promise<Map<number, ClassificationResult>> {
   if (titles.length === 0) return new Map();
 
   const titleList = titles
-    .map((t, i) => `${i + 1}. [ID:${t.id}] ${t.title}`)
+    .map((t, i) => `${i + 1}. [ID:${t.id}] ${t.title}${t.url ? ` (${extractDomain(t.url)})` : ""}`)
     .join("\n");
 
-  const systemPrompt = `你是一位科技媒体编辑，负责判断 Hacker News 上的帖子是否属于以下领域：
+  const systemPrompt = `你是一位资深科技媒体编辑，为一个聚焦 AI 和前沿科技的中文公众号筛选 Hacker News 上的选题。
 
-**我们关注的领域（返回 relevant: true）：**
-- AI/ML/大模型（LLM、GPT、Claude、开源模型、训练、推理、Agent 等）
-- AI 芯片和算力（NVIDIA、GPU、TPU、AI 加速器）
-- 机器人和具身智能
-- AI 应用（AI 编程、AI 搜索、AI 视频/图像生成）
-- AI 安全和治理
-- AI 领域的学术研究和论文
-- AI 公司的重大战略/融资/产品发布
-- 前沿计算技术（量子计算、新型架构）
+你的读者是技术从业者和 AI 爱好者。他们关心的是：让机器变得更聪明的一切进展——无论是新的模型、新的工具、新的应用场景，还是这些技术对行业和社会的影响。
 
-**我们不关注的领域（返回 relevant: false）：**
-- 传统软件工程（Web 框架、编程语言、数据库，除非跟 AI 直接相关）
-- 政治、法律、社会新闻（除非直接涉及 AI 政策）
-- 个人理财、职业建议
-- 游戏、娱乐
-- 硬件 DIY（除非是 AI 硬件）
-- 加密货币、区块链
+你的判断标准很简单：**这个话题能不能写成一篇让我们的读者愿意点开、读完、并且转发到朋友圈的文章？**
 
-判断要准确但宽容——如果一个帖子跟 AI/前沿科技有一定关联，就标为 relevant。`;
+宽容一些。如果一个话题跟 AI 或前沿计算有哪怕间接的关联，都值得保留——我们的读者宁可多看到一些可能有趣的内容，也不想错过真正重要的东西。
 
-  const userPrompt = `请对以下 Hacker News 帖子标题进行分类。
+你会收到每个帖子的标题和来源域名。域名是重要的上下文线索——比如来自 arxiv.org 的内容通常是学术研究，来自 openai.com 的通常是 AI 产品发布。`;
+
+  const userPrompt = `请判断以下帖子是否适合我们的 AI/前沿科技公众号。
+
+先看几个例子，理解我们的判断边界：
+
+**示例 1**: "GPT-5 Released with 1M Context Window" (openai.com)
+→ {"relevant": true, "confidence": 0.99, "reason": "AI 模型重大发布，核心选题"}
+
+**示例 2**: "Show HN: I built a React component library"
+→ {"relevant": false, "confidence": 0.95, "reason": "纯前端开发工具，跟 AI 无关"}
+
+**示例 3**: "Warranty Void If Regenerated" (pluralistic.net)
+→ {"relevant": true, "confidence": 0.8, "reason": "虽然标题不直接提 AI，但讨论的是 AI 生成内容的版权和伦理问题"}
+
+**示例 4**: "Python 3.15's JIT is now back on track" (python.org)
+→ {"relevant": true, "confidence": 0.6, "reason": "Python 是 AI 开发的主要语言，JIT 性能提升直接影响 AI 训练和推理效率"}
+
+**示例 5**: "A data center opened next door. Then came the high-pitched whine" (nytimes.com)
+→ {"relevant": true, "confidence": 0.65, "reason": "AI 算力基础设施的社会影响，读者会关心 AI 发展带来的现实问题"}
+
+**示例 6**: "Austin's surge of new housing construction drove down rents"
+→ {"relevant": false, "confidence": 0.9, "reason": "城市住房政策，跟科技无关"}
+
+**示例 7**: "Juggalo Makeup Blocks Facial Recognition Technology"
+→ {"relevant": true, "confidence": 0.7, "reason": "涉及 AI 人脸识别技术的对抗方法，属于 AI 安全和隐私话题"}
+
+**示例 8**: "The math that explains why bell curves are everywhere" (quantamagazine.org)
+→ {"relevant": false, "confidence": 0.7, "reason": "纯数学科普，虽然统计学跟 ML 有基础联系，但这篇文章本身不是关于 AI 的"}
+
+---
+
+现在请判断以下帖子：
 
 ${titleList}
 
-对每个帖子，返回 JSON 数组（直接输出 JSON，不要代码块）：
-[{"id":ID号,"relevant":true/false,"category":"分类","confidence":0.0-1.0}]
-
-category 从以下选择：AI_Model | AI_Agent | AI_Chip | AI_Safety | AI_Application | AI_Research | AI_Company | Robotics | Frontier_Tech | Not_Relevant`;
+对每个帖子，先思考它跟 AI/前沿科技的关联，然后给出判断。
+输出 JSON 数组（直接输出，不要代码块）：
+[{"id": ID号, "relevant": true/false, "confidence": 0.0-1.0, "reason": "一句话说明判断依据"}]`;
 
   try {
     const res = await fetch(DASHSCOPE_URL, {
@@ -232,14 +260,14 @@ category 从以下选择：AI_Model | AI_Agent | AI_Chip | AI_Safety | AI_Applic
  * 完整的两层过滤流程
  */
 export async function filterTechStories(
-  stories: { id: number; title: string }[]
+  stories: { id: number; title: string; url?: string }[]
 ): Promise<{
   passed: number[];    // 通过的 story IDs
   rejected: number[];  // 被过滤的 story IDs
   stats: { tier1Pass: number; aiPass: number; rejected: number };
 }> {
   const tier1Passed: number[] = [];
-  const needsAI: { id: number; title: string }[] = [];
+  const needsAI: { id: number; title: string; url?: string }[] = [];
   const rejected: number[] = [];
 
   // 第一层：关键词预筛
@@ -254,7 +282,7 @@ export async function filterTechStories(
     }
   }
 
-  // 第二层：AI 精筛（只处理 "maybe" 的）
+  // 第二层：AI 精筛（处理所有非关键词命中、非排除的帖子）
   let aiPassed: number[] = [];
   if (needsAI.length > 0) {
     const classifications = await aiClassifyBatch(needsAI);

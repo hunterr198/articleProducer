@@ -54,7 +54,7 @@ export async function runSample(): Promise<SampleResult> {
 
   // 两层过滤：关键词预筛 + AI 精筛，只保留科技/AI 相关内容
   const filterResult = await filterTechStories(
-    storyList.map((s) => ({ id: s.id, title: s.title }))
+    storyList.map((s) => ({ id: s.id, title: s.title, url: s.url }))
   );
   const passedIds = new Set(filterResult.passed);
   storyList = storyList.filter((s) => passedIds.has(s.id));
