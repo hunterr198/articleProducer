@@ -60,8 +60,9 @@ export function materialAnalysisPrompt(materials: {
   webSearch: string;
 }) {
   return {
-    system: `You are a research analyst preparing structured materials for a Chinese tech article writer.
-Extract key facts, insights, and controversy from the provided sources. Be precise and cite sources.`,
+    system: `You are a research analyst preparing structured materials for a Chinese tech journalist.
+Your job is to preserve CONCRETE DETAILS — specific quotes, usernames, data points, and source attributions.
+The journalist needs REAL material to cite, not abstract summaries.`,
 
     user: `# Source Materials
 
@@ -69,13 +70,36 @@ Extract key facts, insights, and controversy from the provided sources. Be preci
 ${materials.originalContent.slice(0, 8000)}
 
 ## HN Comment Highlights
-${materials.hnComments.slice(0, 4000)}
+${materials.hnComments.slice(0, 6000)}
 
 ## Supplementary Web Search
 ${materials.webSearch.slice(0, 3000)}
 
-# Task: Create a structured material pack. Output ONLY valid JSON (no markdown fences):
-{"core_facts":"What happened, who did it, what result (2-3 sentences)","key_insights":["Insight from original article","Unique perspective from HN comments (@username)","Background context from search"],"controversy":"Main disagreement in the community, or None if consensus","context":"Why this matters in the bigger tech picture","suggested_angle":"Best angle for Chinese tech audience","discussion_question":"Open question to provoke reader discussion"}`
+# Task: Create a structured material pack that PRESERVES concrete details.
+
+CRITICAL RULES:
+- For HN comments: Keep the EXACT username and their key argument (paraphrased but attributed)
+- For the original article: Keep specific data points, quotes, and the author/publication name
+- Do NOT abstract away details into vague summaries — the journalist needs citable facts
+
+Output ONLY valid JSON (no markdown fences):
+{
+  "source_article": {
+    "title": "exact title of the original article",
+    "author": "author name if available",
+    "publication": "publication/site name",
+    "url": "URL",
+    "key_facts": ["specific fact 1 with numbers/data", "specific fact 2", "specific fact 3"]
+  },
+  "hn_quotes": [
+    {"username": "@xxx", "stance": "for/against/neutral", "key_argument": "their specific point in 1-2 sentences", "raw_quote": "a memorable short quote from them"},
+    {"username": "@yyy", "stance": "for/against/neutral", "key_argument": "...", "raw_quote": "..."}
+  ],
+  "controversy": "The specific disagreement: Side A says X because... Side B says Y because...",
+  "context": "Why this matters in the bigger tech picture",
+  "suggested_angle": "Best angle for Chinese tech audience — what's the story here?",
+  "discussion_question": "A specific, arguable question (not a generic 'what do you think?')"
+}`
   };
 }
 
@@ -91,10 +115,10 @@ ${materialPack}
 
 ## 文章结构要求（必须包含以下 5-7 个段落）
 
-1. **开场钩子**（200-300字）：用一个具体场景、震撼数据或反直觉的事实引入。不要用"随着...的发展"。要让读者3秒内被抓住。
-2. **事件本身**（300-500字）：到底发生了什么？谁做了什么？核心技术/产品/事件的关键信息。要有具体的数据、参数、时间线。
+1. **开场钩子**（200-300字）：直接点出"这件事在 HN 火了"，引用原文标题/来源和 HN 分数/评论数作为新闻由头。然后用一个反直觉的事实或尖锐的问题抓住读者。
+2. **事件还原**（300-500字）：基于原文，还原到底发生了什么。必须引用原文的标题、作者/发布方、关键数据。不要泛泛而谈，要有具体信息。
 3. **技术解读**（300-500字）：为什么这件事在技术上重要？底层原理是什么？和已有方案相比有何不同？用类比让非专家也能理解。
-4. **社区声音**（300-400字）：HN 评论区的精华观点。必须引用至少 2-3 个具体用户的观点，呈现正反两面。不是简单罗列，而是用这些观点推动叙事。
+4. **HN 社区激辩**（400-600字）：这是文章的重头戏。必须引用至少 3-5 个 HN 用户的具体观点（从素材包的 hn_quotes 中选取），呈现正反两面的观点碰撞。不是简单罗列，而是用叙事串联这些观点，让读者看到一场真实的技术讨论。
 5. **行业影响**（200-300字）：这件事对行业/开发者/用户意味着什么？谁会受益？谁会受冲击？
 6. **编辑观点**（200-300字）：你的判断。不骑墙，给出一个明确的看法，但要有论据支撑。
 7. **讨论收尾**（100-150字）：抛出一个尖锐的、值得争论的开放性问题。不要做全文总结。
@@ -114,12 +138,17 @@ export function articlePrompt(outline: string, materialPack: string) {
   return {
     system: `你是一位在AI和科技领域深耕多年的技术博主，为微信公众号写深度解读文章。
 
+你的文章定位：**基于 Hacker News 热门讨论的中文深度报道**。
+- 你不是在写百科全书或科普文，你是在**报道一个正在 HN 社区引发热议的话题**
+- 你的文章必须让读者感受到"这件事正在国外技术圈被热烈讨论"
+- 你的独特价值是：帮中文读者看到 HN 社区里那些最精彩的观点碰撞
+
 你的风格定位：
 - 比「新智元」更克制——不煽情、不用感叹号，但保留叙事感和节奏感
 - 比「机器之心」更亲切——不像论文摘要翻译，而是像懂技术的朋友在聊天
-- 关键词：**专业、有观点、有温度、有信息密度**
+- 关键词：**有来源、有引用、有观点、有信息密度**
 
-你的读者是25-40岁的技术从业者、AI应用开发者和对科技商业感兴趣的人。他们爱折腾，但不一定是纯技术人员。`,
+你的读者是25-40岁的技术从业者、AI应用开发者和对科技商业感兴趣的人。`,
 
     user: `# 大纲
 ${outline}
@@ -146,12 +175,18 @@ ${materialPack}
 - 适当用反问句和设问句增加互动感
 - 加入思考痕迹："说实话""我觉得""有意思的是""但话说回来"
 
+## 来源引用（最重要的要求）
+- **必须在文章开头明确说出信息来源**，例如："最近，XXX 在 Hacker News 上引发了热议" 或 "XXX 发布的一篇文章/项目，在 HN 拿到了 XXX 分"
+- **必须引用原文的具体信息**：原文的标题、作者/发布方、关键数据点
+- **必须引用至少 3-5 个 HN 用户的具体观点**，格式为 "HN 网友 @username 指出：'...'"，保留他们的原始论点
+- HN 评论的引用不是点缀，而是文章的核心素材——读者想看的就是这些真实的观点碰撞
+- 呈现正反两面的观点，让读者看到争议的全貌
+
 ## 内容深度
 - 不要浮于表面，要挖到"so what"——这件事为什么重要？对谁重要？
-- 引用 HN 评论区的观点时标注 "HN 网友 @username 指出"
-- 至少引用 2-3 个 HN 用户的具体观点，呈现正反两面
 - 技术原理要用类比让非专家也能懂（比如"就像..."）
 - 给出你自己的明确判断，不要骑墙
+- 不要编造任何不在素材包里的事实或数据
 
 ## 文章结构
 - 每个段落加 **加粗小标题**
