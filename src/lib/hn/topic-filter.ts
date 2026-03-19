@@ -152,43 +152,43 @@ export async function aiClassifyBatch(
     .map((t, i) => `${i + 1}. [ID:${t.id}] ${t.title}${t.url ? ` (${extractDomain(t.url)})` : ""}`)
     .join("\n");
 
-  const systemPrompt = `你是一位资深科技媒体编辑，为一个聚焦 AI 和前沿科技的中文公众号筛选 Hacker News 上的选题。
+  const systemPrompt = `你是「新智元」和「机器之心」这类中文 AI 科技媒体的选题编辑。
 
-你的读者是技术从业者和 AI 爱好者。他们关心的是：让机器变得更聪明的一切进展——无论是新的模型、新的工具、新的应用场景，还是这些技术对行业和社会的影响。
+你的公众号只报道 AI 和前沿科技领域的内容。具体来说，你们报道的选题类型包括：
+- 大模型发布、评测、架构创新（GPT、Claude、Gemini、Llama、DeepSeek、Qwen 等）
+- AI Agent、AI 编程工具、AI 应用产品
+- AI 芯片、算力基础设施（NVIDIA、GPU、TPU）
+- 机器人、具身智能、自动驾驶
+- AI 安全、对齐、治理政策
+- AI 学术论文和顶会动态（ICLR、NeurIPS、ICML、arXiv）
+- AI 公司的重大战略（融资、收购、IPO、产品发布）
+- AI 对行业和社会的直接影响（AI 取代岗位、AI 版权争议、AI 生成内容检测）
+- 前沿计算技术（量子计算、新型神经网络架构）
 
-你的判断标准很简单：**这个话题能不能写成一篇让我们的读者愿意点开、读完、并且转发到朋友圈的文章？**
+你们**不报道**的内容：传统软件工程、Web 开发、编程语言更新（除非直接服务于 AI）、操作系统、网络协议、加密货币、游戏、政治、法律、个人理财、硬件 DIY、计算机历史回顾。
 
-宽容一些。如果一个话题跟 AI 或前沿计算有哪怕间接的关联，都值得保留——我们的读者宁可多看到一些可能有趣的内容，也不想错过真正重要的东西。
+判断标准：**这个话题能不能被「新智元」或「机器之心」写成一篇正式的文章？** 如果只是跟科技沾边但跟 AI 没有实质关联，就不算。
 
-你会收到每个帖子的标题和来源域名。域名是重要的上下文线索——比如来自 arxiv.org 的内容通常是学术研究，来自 openai.com 的通常是 AI 产品发布。`;
+你会收到每个帖子的标题和来源域名。域名是重要线索——来自 arxiv.org、openai.com、anthropic.com 的内容大概率相关；来自普通新闻网站的需要看标题内容。`;
 
-  const userPrompt = `请判断以下帖子是否适合我们的 AI/前沿科技公众号。
+  const userPrompt = `请判断以下帖子是否属于「新智元」「机器之心」会报道的 AI/前沿科技领域。
 
-先看几个例子，理解我们的判断边界：
+先看几个真实案例，校准你的判断边界：
 
-**示例 1**: "GPT-5 Released with 1M Context Window" (openai.com)
-→ {"relevant": true, "confidence": 0.99, "reason": "AI 模型重大发布，核心选题"}
-
-**示例 2**: "Show HN: I built a React component library"
-→ {"relevant": false, "confidence": 0.95, "reason": "纯前端开发工具，跟 AI 无关"}
-
-**示例 3**: "Warranty Void If Regenerated" (pluralistic.net)
-→ {"relevant": true, "confidence": 0.8, "reason": "虽然标题不直接提 AI，但讨论的是 AI 生成内容的版权和伦理问题"}
-
-**示例 4**: "Python 3.15's JIT is now back on track" (python.org)
-→ {"relevant": true, "confidence": 0.6, "reason": "Python 是 AI 开发的主要语言，JIT 性能提升直接影响 AI 训练和推理效率"}
-
-**示例 5**: "A data center opened next door. Then came the high-pitched whine" (nytimes.com)
-→ {"relevant": true, "confidence": 0.65, "reason": "AI 算力基础设施的社会影响，读者会关心 AI 发展带来的现实问题"}
-
-**示例 6**: "Austin's surge of new housing construction drove down rents"
-→ {"relevant": false, "confidence": 0.9, "reason": "城市住房政策，跟科技无关"}
-
-**示例 7**: "Juggalo Makeup Blocks Facial Recognition Technology"
-→ {"relevant": true, "confidence": 0.7, "reason": "涉及 AI 人脸识别技术的对抗方法，属于 AI 安全和隐私话题"}
-
-**示例 8**: "The math that explains why bell curves are everywhere" (quantamagazine.org)
-→ {"relevant": false, "confidence": 0.7, "reason": "纯数学科普，虽然统计学跟 ML 有基础联系，但这篇文章本身不是关于 AI 的"}
+✅ "Nvidia NemoClaw" (nvidia.com) → relevant, 0.95, "NVIDIA AI 产品发布，核心选题"
+✅ "AI coding is gambling" → relevant, 0.9, "讨论 AI 编程的局限性，AI 应用话题"
+✅ "Snowflake AI Escapes Sandbox and Executes Malware" → relevant, 0.9, "AI 安全事件"
+✅ "2% of ICML papers desk rejected because the authors used LLM" → relevant, 0.85, "AI 对学术界的影响"
+✅ "Warranty Void If Regenerated" → relevant, 0.8, "AI 生成内容的版权问题，新智元会报道"
+✅ "Juggalo Makeup Blocks Facial Recognition Technology" → relevant, 0.75, "AI 人脸识别对抗，AI 安全话题"
+❌ "Conway's Game of Life, in real life" → not relevant, 0.85, "经典计算机科学话题，不是 AI"
+❌ "Wander – A tiny, decentralised tool to explore the small web" → not relevant, 0.9, "去中心化 Web 工具，跟 AI 无关"
+❌ "RX – a new random-access JSON alternative" → not relevant, 0.9, "数据格式/序列化，纯软件工程"
+❌ "OpenBSD: PF queues break the 4 Gbps barrier" → not relevant, 0.95, "操作系统网络性能，跟 AI 无关"
+❌ "Iran war energy shock sparks global push to reduce fossil fuel dependence" → not relevant, 0.95, "地缘政治/能源，跟 AI 无关"
+❌ "A sufficiently detailed spec is code" → not relevant, 0.8, "软件工程方法论，不是 AI 话题"
+❌ "Stdwin: Standard window interface by Guido Van Rossum" → not relevant, 0.9, "Python 创始人的历史项目，计算机历史"
+❌ "ENIAC, the First General-Purpose Digital Computer, Turns 80" → not relevant, 0.85, "计算机历史回顾"
 
 ---
 
@@ -196,9 +196,9 @@ export async function aiClassifyBatch(
 
 ${titleList}
 
-对每个帖子，先思考它跟 AI/前沿科技的关联，然后给出判断。
+对每个帖子，想一想「新智元」或「机器之心」会不会为它写一篇文章，然后给出判断。
 输出 JSON 数组（直接输出，不要代码块）：
-[{"id": ID号, "relevant": true/false, "confidence": 0.0-1.0, "reason": "一句话说明判断依据"}]`;
+[{"id": ID号, "relevant": true/false, "confidence": 0.0-1.0, "reason": "一句话说明"}]`;
 
   try {
     const res = await fetch(DASHSCOPE_URL, {
