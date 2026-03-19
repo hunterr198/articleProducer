@@ -45,34 +45,46 @@ const TIER1_KEYWORDS = [
   "AI for science", "protein folding", "AlphaFold",
   "computer vision", "object detection",
   "AGI", "ASI", "superintelligence",
-];
-
-// Tier 2: 宽泛科技术语（需要结合上下文判断，标题命中进入 AI 精筛）
-const TIER2_KEYWORDS = [
-  "AI", "artificial intelligence", "neural", "model training",
-  "pre-training", "benchmark", "evaluation",
+  // 宽泛但高信号的 AI 相关词（原 Tier 2 合并）
+  "artificial intelligence", "neural", "model training",
+  "pre-training", "benchmark",
   "open-source model", "open source model",
-  "synthetic data", "data pipeline",
+  "synthetic data",
   "edge AI", "on-device",
-  "AI regulation", "AI governance", "AI policy",
-  "world model", "simulator",
-  "autonomous", "self-driving",
-  "natural language", "NLP", "NLU",
+  "AI regulation", "AI governance",
+  "world model",
+  "self-driving",
+  "natural language", "NLP",
   "image generation", "video generation",
-  "knowledge graph", "semantic search",
   "AI startup", "AI infrastructure",
-  "ML ops", "MLOps",
-  "AI energy", "AI datacenter",
+  "MLOps",
 ];
 
-// 排除关键词：命中这些的帖子直接排除（除非同时命中 Tier 1）
+// Tier 2 已合并到 Tier 1（不再单独使用，所有非 Tier 1 非排除的都交给 AI）
+
+// 排除关键词：命中这些且没命中 Tier 1 的帖子直接排除
 const EXCLUSION_KEYWORDS = [
+  // 加密货币/区块链
   "cryptocurrency", "bitcoin", "ethereum", "blockchain", "NFT", "Web3",
+  "DeFi", "crypto", "token sale", "mining pool",
+  // 招聘/职业
   "hiring", "job board", "career", "salary", "interview tips",
-  "personal finance", "tax", "mortgage", "investing",
-  "mechanical keyboard", "3D printing",
-  "home server", "homelab", "self-hosted",
-  "game engine", "Unity", "Unreal",
+  "Who is hiring", "Who wants to be hired",
+  // 个人理财
+  "personal finance", "tax", "mortgage", "investing", "retirement",
+  // 硬件 DIY（非 AI）
+  "mechanical keyboard", "3D printing", "woodworking", "soldering",
+  // 自托管/家庭服务器
+  "home server", "homelab", "self-hosted", "NAS",
+  // 游戏
+  "game engine", "Unity", "Unreal", "indie game", "game jam",
+  // 纯前端/Web 开发（非 AI）
+  "CSS", "HTML", "jQuery", "Bootstrap", "Tailwind",
+  // 政治/法律（非 AI 治理）
+  "supreme court", "election", "lawsuit", "congress", "senate",
+  // 运动/娱乐
+  "NFL", "NBA", "soccer", "football", "Olympics",
+  "movie", "TV show", "Netflix", "Spotify",
 ];
 
 /**
@@ -90,23 +102,17 @@ export function keywordFilter(title: string): "pass" | "maybe" | "reject" {
     titleLower.includes(kw.toLowerCase())
   );
 
-  if (hitTier1) return "pass";
+  if (hitTier1) return "pass"; // Tier 1 命中 → 直接通过（即使同时命中排除词）
 
-  // 检查排除词
+  // 检查排除词（明确不相关的领域直接拒绝）
   const hitExclusion = EXCLUSION_KEYWORDS.some((kw) =>
     titleLower.includes(kw.toLowerCase())
   );
 
-  if (hitExclusion) return "reject";
+  if (hitExclusion) return "reject"; // 没命中 Tier 1 + 命中排除词 → 拒绝
 
-  // 检查 Tier 2
-  const hitTier2 = TIER2_KEYWORDS.some((kw) =>
-    titleLower.includes(kw.toLowerCase())
-  );
-
-  if (hitTier2) return "maybe";
-
-  return "reject";
+  // 其余所有帖子都交给 AI 判断（宁可多送 AI 审，不漏选）
+  return "maybe";
 }
 
 // ===== 第二层：AI 精筛 =====
