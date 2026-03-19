@@ -75,12 +75,9 @@ export async function reviewArticle(
       prompt = reviewReadabilityPrompt(article);
       break;
   }
-  const result = await withRetry(() => qwenChat(prompt.system, prompt.user, { json: true }));
-  try {
-    return JSON.parse(result);
-  } catch {
-    return { revised: result, changes: ["Failed to parse JSON response, returning raw text"] };
-  }
+  // 审校直接返回纯文本文章，不要求 JSON（长文章的 JSON 输出不可靠）
+  const revised = await withRetry(() => qwenChat(prompt.system, prompt.user));
+  return { revised, changes: [`${pass} pass completed`] };
 }
 
 // --- Qwen 联网搜索能力 ---
