@@ -2,6 +2,24 @@ import type { HNStory, HNComment } from "./types";
 
 const BASE_URL = "https://hn.algolia.com/api/v1";
 
+// 聚焦科技/AI 的搜索关键词
+const TECH_KEYWORDS = [
+  "AI",
+  "LLM",
+  "machine learning",
+  "deep learning",
+  "GPT",
+  "Claude",
+  "open source",
+  "programming",
+  "startup",
+  "cybersecurity",
+  "blockchain",
+  "robotics",
+  "API",
+  "developer tools",
+];
+
 interface AlgoliaHit {
   objectID: string;
   title: string;
@@ -14,14 +32,8 @@ interface AlgoliaHit {
   _tags: string[];
 }
 
-export async function fetchFrontPageStories(): Promise<HNStory[]> {
-  const res = await fetch(
-    `${BASE_URL}/search?tags=front_page&hitsPerPage=30`
-  );
-  if (!res.ok) throw new Error(`Algolia API error: ${res.status}`);
-  const data = await res.json();
-
-  return data.hits.map((hit: AlgoliaHit) => ({
+function hitToStory(hit: AlgoliaHit): HNStory {
+  return {
     id: parseInt(hit.objectID),
     title: hit.title,
     url: hit.url ?? undefined,
@@ -31,8 +43,67 @@ export async function fetchFrontPageStories(): Promise<HNStory[]> {
     storyText: hit.story_text ?? undefined,
     storyType: detectType(hit),
     createdAt: new Date(hit.created_at_i * 1000),
-  }));
+  };
 }
+
+/**
+ * 双策略采集：front_page + 关键词搜索，合并去重，按分数排序
+ *
+ * 策略 A：抓 front_page 上的科技相关帖子
+ * 策略 B：用关键词并行搜索最近 24 小时的高分帖子
+ * 合并去重后取 Top N
+ */
+export async function fetchTechStories(limit = 30): Promise<HNStory[]> {
+  const oneDayAgo = Math.floor(Date.now() / 1000) - 24 * 60 * 60;
+
+  // 策略 A：front_page 帖子
+  const frontPagePromise = fetch(
+    `${BASE_URL}/search?tags=front_page&hitsPerPage=50`
+  )
+    .then((r) => (r.ok ? r.json() : { hits: [] }))
+    .then((data) => (data.hits as AlgoliaHit[]).map(hitToStory))
+    .catch(() => [] as HNStory[]);
+
+  // 策略 B：关键词并行搜索（最近 24 小时，高分优先）
+  const keywordPromises = TECH_KEYWORDS.map((keyword) =>
+    fetch(
+      `${BASE_URL}/search?query=${encodeURIComponent(keyword)}&tags=story&numericFilters=points>20,created_at_i>${oneDayAgo}&hitsPerPage=10`
+    )
+      .then((r) => (r.ok ? r.json() : { hits: [] }))
+      .then((data) => (data.hits as AlgoliaHit[]).map(hitToStory))
+      .catch(() => [] as HNStory[])
+  );
+
+  // 并行执行所有请求
+  const [frontPageStories, ...keywordResults] = await Promise.all([
+    frontPagePromise,
+    ...keywordPromises,
+  ]);
+
+  // 合并去重（以 story ID 为 key，保留分数最高的版本）
+  const storyMap = new Map<number, HNStory>();
+
+  for (const story of [...frontPageStories, ...keywordResults.flat()]) {
+    const existing = storyMap.get(story.id);
+    if (!existing || story.score > existing.score) {
+      storyMap.set(story.id, story);
+    }
+  }
+
+  // 按分数排序，取 Top N
+  const allStories = Array.from(storyMap.values())
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit);
+
+  return allStories;
+}
+
+// 保留原有的 fetchFrontPageStories 作为兼容
+export async function fetchFrontPageStories(): Promise<HNStory[]> {
+  return fetchTechStories(30);
+}
+
+// --- 以下为评论获取，保持不变 ---
 
 interface AlgoliaItem {
   id: number;
@@ -63,8 +134,8 @@ export async function fetchStoryWithComments(
       createdAt: new Date(data.created_at_i * 1000),
     },
     comments: comments
-      .filter((c) => c.text && c.text.length > 20) // filter out one-liners
-      .slice(0, 20), // top 20
+      .filter((c) => c.text && c.text.length > 20)
+      .slice(0, 20),
   };
 }
 
