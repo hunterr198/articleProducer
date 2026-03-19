@@ -1,9 +1,10 @@
 import { db } from "@/lib/db";
 import { stories, snapshots, systemLogs } from "@/lib/db/schema";
 import { fetchTopStoryIds } from "./official-api";
-import { fetchFrontPageStories } from "./algolia-api";
+import { fetchTechStories } from "./algolia-api";
 import type { HNStory } from "./types";
 import { eq, gte } from "drizzle-orm";
+import { filterTechStories } from "./topic-filter";
 
 const DEDUP_WINDOW_MS = 2 * 60 * 60 * 1000; // 2 hours
 const TOP_N = 30; // Only track top 30
@@ -38,18 +39,27 @@ export async function runSample(): Promise<SampleResult> {
     const topIds = await fetchTopStoryIds();
     topIds.slice(0, TOP_N).forEach((id, i) => rankings.set(id, i + 1));
 
-    // Algolia for details
-    const algoliaStories = await fetchFrontPageStories();
+    // Algolia for details (dual strategy: front_page + keyword search)
+    const algoliaStories = await fetchTechStories(60); // 多取一些，过滤后保留 top 30
     storyList = algoliaStories;
   } catch (err) {
     await log("error", "sampler", "API fetch failed", { error: String(err) });
     throw err;
   }
 
-  // Filter out job posts and polls (not article-worthy per spec)
+  // Filter out job posts and polls
   storyList = storyList.filter(
     (s) => s.storyType !== "poll" && s.title !== ""
   );
+
+  // 两层过滤：关键词预筛 + AI 精筛，只保留科技/AI 相关内容
+  const filterResult = await filterTechStories(
+    storyList.map((s) => ({ id: s.id, title: s.title }))
+  );
+  const passedIds = new Set(filterResult.passed);
+  storyList = storyList.filter((s) => passedIds.has(s.id));
+
+  await log("info", "sampler", `Topic filter: ${filterResult.stats.tier1Pass} keyword pass, ${filterResult.stats.aiPass} AI pass, ${filterResult.stats.rejected} rejected`);
 
   // Upsert stories and create snapshots
   let newCount = 0;
