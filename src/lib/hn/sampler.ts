@@ -1,10 +1,8 @@
 import { db } from "@/lib/db";
 import { stories, snapshots, systemLogs } from "@/lib/db/schema";
-import { fetchTopStoryIds } from "./official-api";
-import { fetchTechStories } from "./algolia-api";
+import { fetchAllRecentStories } from "./algolia-api";
 import type { HNStory } from "./types";
 import { eq, gte } from "drizzle-orm";
-import { filterTechStories } from "./topic-filter";
 
 const DEDUP_WINDOW_MS = 2 * 60 * 60 * 1000; // 2 hours
 const TOP_N = 30; // Only track top 30
@@ -30,18 +28,11 @@ export async function runSample(): Promise<SampleResult> {
     return { storiesCount: 0, newStories: 0, sampledAt: now };
   }
 
-  // Fetch data from both APIs with fallback
+  // Fetch all recent stories from Algolia
   let storyList: HNStory[] = [];
-  let rankings = new Map<number, number>();
 
   try {
-    // Official API for rankings
-    const topIds = await fetchTopStoryIds();
-    topIds.slice(0, TOP_N).forEach((id, i) => rankings.set(id, i + 1));
-
-    // Algolia for details (dual strategy: front_page + keyword search)
-    const algoliaStories = await fetchTechStories(60); // 多取一些，过滤后保留 top 30
-    storyList = algoliaStories;
+    storyList = await fetchAllRecentStories();
   } catch (err) {
     await log("error", "sampler", "API fetch failed", { error: String(err) });
     throw err;
@@ -52,18 +43,9 @@ export async function runSample(): Promise<SampleResult> {
     (s) => s.storyType !== "poll" && s.title !== ""
   );
 
-  // 两层过滤：关键词预筛 + AI 精筛，只保留科技/AI 相关内容
-  const filterResult = await filterTechStories(
-    storyList.map((s) => ({ id: s.id, title: s.title, url: s.url }))
-  );
-  const passedIds = new Set(filterResult.passed);
-  storyList = storyList.filter((s) => passedIds.has(s.id));
-
-  await log("info", "sampler", `Topic filter: ${filterResult.stats.tier1Pass} keyword pass, ${filterResult.stats.aiPass} AI pass, ${filterResult.stats.rejected} rejected`);
-
   // Upsert stories and create snapshots
   let newCount = 0;
-  for (const story of storyList.slice(0, TOP_N)) {
+  for (const [index, story] of storyList.slice(0, TOP_N).entries()) {
     const existing = await db.query.stories.findFirst({
       where: eq(stories.id, story.id),
     });
@@ -100,7 +82,7 @@ export async function runSample(): Promise<SampleResult> {
     await db.insert(snapshots).values({
       storyId: story.id,
       sampledAt: now,
-      rank: rankings.get(story.id) ?? 99,
+      rank: index + 1,
       score: story.score,
       commentsCount: story.commentsCount,
       createdAt: now,
