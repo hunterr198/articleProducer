@@ -1,9 +1,12 @@
 import { db } from "@/lib/db";
-import { articles, dailyScores, stories } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
-import { runResearch } from "@/lib/research/pipeline";
+import { articles, dailyScores, stories, topicClusters } from "@/lib/db/schema";
+import { eq, and, desc, inArray } from "drizzle-orm";
+import { runClusterResearch } from "@/lib/research/pipeline";
 import { generateOutline, generateBriefSummary } from "@/lib/ai/gpt";
-import { generateArticle as qwenGenerateArticle, generateBrief as qwenGenerateBrief } from "@/lib/ai/qwen";
+import {
+  generateArticle as qwenGenerateArticle,
+  generateBrief as qwenGenerateBrief,
+} from "@/lib/ai/qwen";
 import { reviewArticle } from "@/lib/review/reviewer";
 
 interface Selection {
@@ -22,23 +25,21 @@ export async function generateArticlesForSelection(
   const articleIds: number[] = [];
   const errors: string[] = [];
 
-  // Process deep dives first (sequentially for API rate limits)
   const deepDives = selections.filter((s) => s.type === "deep_dive");
   const briefs = selections.filter((s) => s.type === "brief");
 
   for (const sel of deepDives) {
     try {
-      const id = await generateDeepDive(sel.dailyScoreId);
+      const id = await generateClusterDeepDive(sel.dailyScoreId);
       articleIds.push(id);
     } catch (err) {
       errors.push(`Deep dive for score ${sel.dailyScoreId}: ${String(err)}`);
     }
   }
 
-  // Process briefs (can be done faster)
   for (const sel of briefs) {
     try {
-      const id = await generateBriefArticle(sel.dailyScoreId);
+      const id = await generateClusterBrief(sel.dailyScoreId);
       articleIds.push(id);
     } catch (err) {
       errors.push(`Brief for score ${sel.dailyScoreId}: ${String(err)}`);
@@ -48,84 +49,113 @@ export async function generateArticlesForSelection(
   return { articleIds, errors };
 }
 
-async function generateDeepDive(dailyScoreId: number): Promise<number> {
+async function generateClusterDeepDive(dailyScoreId: number): Promise<number> {
   const now = new Date();
 
-  // Get the story data
+  // 1. Get daily_score → get clusterId → get cluster from topic_clusters
   const score = await db.query.dailyScores.findFirst({
     where: eq(dailyScores.id, dailyScoreId),
   });
   if (!score) throw new Error(`Daily score ${dailyScoreId} not found`);
 
-  const story = await db.query.stories.findFirst({
-    where: eq(stories.id, score.storyId),
-  });
-  if (!story) throw new Error(`Story ${score.storyId} not found`);
+  const cluster = score.clusterId
+    ? await db.query.topicClusters.findFirst({
+        where: eq(topicClusters.id, score.clusterId),
+      })
+    : null;
+
+  // Fall back to single-story behaviour if no cluster
+  const primaryStoryId = cluster?.primaryStoryId ?? score.storyId;
+  const storyIdsRaw: number[] = cluster
+    ? JSON.parse(cluster.storyIds)
+    : [score.storyId];
+  const clusterLabel = cluster?.label ?? "";
+
+  // 2. Fetch all stories in cluster from DB
+  const clusterStories = await db
+    .select()
+    .from(stories)
+    .where(inArray(stories.id, storyIdsRaw));
+
+  if (clusterStories.length === 0) {
+    throw new Error(`No stories found for cluster (score ${dailyScoreId})`);
+  }
+
+  const primaryStory = clusterStories.find((s) => s.id === primaryStoryId) ?? clusterStories[0];
 
   // Create article record (generating status)
-  const [articleRecord] = await db.insert(articles).values({
-    storyId: story.id,
-    dailyScoreId,
-    type: "deep_dive",
-    status: "generating",
-    createdAt: now,
-    updatedAt: now,
-  }).returning();
+  const [articleRecord] = await db
+    .insert(articles)
+    .values({
+      storyId: primaryStory.id,
+      dailyScoreId,
+      type: "deep_dive",
+      status: "generating",
+      createdAt: now,
+      updatedAt: now,
+    })
+    .returning();
 
   try {
-    // Step 1: Research
-    const researchResult = await runResearch({
-      id: story.id,
-      title: story.title,
-      url: story.url,
-      storyType: story.storyType,
+    // 4. Call runClusterResearch
+    const researchResult = await runClusterResearch({
+      storyIds: storyIdsRaw,
+      primaryStoryId: primaryStory.id,
+      label: clusterLabel,
     });
 
-    // Step 2: Generate outline (GPT)
+    // 5. Generate outline (GPT)
     const materialPackStr = JSON.stringify(researchResult.materialPack);
     const outline = await generateOutline(materialPackStr);
-
-    // Step 3: Generate article (Qwen) — with images and source links
     const outlineStr = JSON.stringify(outline);
-    const hnUrl = `https://news.ycombinator.com/item?id=${story.id}`;
-    const sourceUrl = story.url ?? hnUrl;
+
+    // 6. Build sources array for article prompt
+    const sources = clusterStories.map((s) => ({
+      title: s.title,
+      url: s.url ?? `https://news.ycombinator.com/item?id=${s.id}`,
+      hnUrl: `https://news.ycombinator.com/item?id=${s.id}`,
+      score: s.score ?? 0,
+    }));
     const images = researchResult.images ?? [];
+
+    // 7. Generate article (Qwen) with multi-source meta
     const draft = await qwenGenerateArticle(outlineStr, materialPackStr, {
-      hnUrl,
-      sourceUrl,
+      sources,
       images,
     });
 
-    // Step 4: 3-pass review (Qwen)
+    // 8. 3-pass review
     const reviewed = await reviewArticle(draft, materialPackStr, "deep_dive");
 
-    // Update article record
-    await db.update(articles).set({
-      title: outline.title,
-      contentMd: draft,
-      contentReviewed: reviewed.revised,
-      outline: outlineStr,
-      reviewLog: JSON.stringify(reviewed.log),
-      status: "reviewed",
-      updatedAt: new Date(),
-    }).where(eq(articles.id, articleRecord.id));
-
-    // Update daily score status
-    await db.update(dailyScores).set({ status: "selected_deep" }).where(eq(dailyScores.id, dailyScoreId));
+    // 9. Save to articles table
+    await db
+      .update(articles)
+      .set({
+        title: outline.title,
+        contentMd: draft,
+        contentReviewed: reviewed.revised,
+        outline: outlineStr,
+        reviewLog: JSON.stringify(reviewed.log),
+        status: "reviewed",
+        updatedAt: new Date(),
+      })
+      .where(eq(articles.id, articleRecord.id));
 
     return articleRecord.id;
   } catch (err) {
-    // Mark as failed
-    await db.update(articles).set({
-      status: "failed",
-      reviewLog: JSON.stringify({ error: String(err) }),
-      updatedAt: new Date(),
-    }).where(eq(articles.id, articleRecord.id));
+    await db
+      .update(articles)
+      .set({
+        status: "failed",
+        reviewLog: JSON.stringify({ error: String(err) }),
+        updatedAt: new Date(),
+      })
+      .where(eq(articles.id, articleRecord.id));
     throw err;
   }
 }
 
-async function generateBriefArticle(dailyScoreId: number): Promise<number> {
+async function generateClusterBrief(dailyScoreId: number): Promise<number> {
   const now = new Date();
 
   const score = await db.query.dailyScores.findFirst({
@@ -133,53 +163,114 @@ async function generateBriefArticle(dailyScoreId: number): Promise<number> {
   });
   if (!score) throw new Error(`Daily score ${dailyScoreId} not found`);
 
-  const story = await db.query.stories.findFirst({
-    where: eq(stories.id, score.storyId),
-  });
-  if (!story) throw new Error(`Story ${score.storyId} not found`);
+  const cluster = score.clusterId
+    ? await db.query.topicClusters.findFirst({
+        where: eq(topicClusters.id, score.clusterId),
+      })
+    : null;
 
-  const [articleRecord] = await db.insert(articles).values({
-    storyId: story.id,
-    dailyScoreId,
-    type: "brief",
-    status: "generating",
-    createdAt: now,
-    updatedAt: now,
-  }).returning();
+  const primaryStoryId = cluster?.primaryStoryId ?? score.storyId;
+  const clusterLabel = cluster?.label ?? "";
+
+  const primaryStory = await db.query.stories.findFirst({
+    where: eq(stories.id, primaryStoryId),
+  });
+  if (!primaryStory) throw new Error(`Story ${primaryStoryId} not found`);
+
+  const [articleRecord] = await db
+    .insert(articles)
+    .values({
+      storyId: primaryStory.id,
+      dailyScoreId,
+      type: "brief",
+      status: "generating",
+      createdAt: now,
+      updatedAt: now,
+    })
+    .returning();
 
   try {
-    // Get brief summary from GPT
-    const summary = await generateBriefSummary(story.title, story.url ?? undefined);
+    // Use cluster label if available, otherwise fall back to story title
+    const briefTitle = clusterLabel || primaryStory.title;
+    const summary = await generateBriefSummary(briefTitle, primaryStory.url ?? undefined);
 
-    // Generate brief (Qwen)
     const draft = await qwenGenerateBrief(
-      story.title,
-      story.score ?? 0,
-      story.commentsCount ?? 0,
+      briefTitle,
+      primaryStory.score ?? 0,
+      primaryStory.commentsCount ?? 0,
       summary
     );
 
-    // De-AI review only
     const reviewed = await reviewArticle(draft, "", "brief");
 
-    await db.update(articles).set({
-      title: story.title,
-      contentMd: draft,
-      contentReviewed: reviewed.revised,
-      reviewLog: JSON.stringify(reviewed.log),
-      status: "reviewed",
-      updatedAt: new Date(),
-    }).where(eq(articles.id, articleRecord.id));
-
-    await db.update(dailyScores).set({ status: "selected_brief" }).where(eq(dailyScores.id, dailyScoreId));
+    await db
+      .update(articles)
+      .set({
+        title: briefTitle,
+        contentMd: draft,
+        contentReviewed: reviewed.revised,
+        reviewLog: JSON.stringify(reviewed.log),
+        status: "reviewed",
+        updatedAt: new Date(),
+      })
+      .where(eq(articles.id, articleRecord.id));
 
     return articleRecord.id;
   } catch (err) {
-    await db.update(articles).set({
-      status: "failed",
-      reviewLog: JSON.stringify({ error: String(err) }),
-      updatedAt: new Date(),
-    }).where(eq(articles.id, articleRecord.id));
+    await db
+      .update(articles)
+      .set({
+        status: "failed",
+        reviewLog: JSON.stringify({ error: String(err) }),
+        updatedAt: new Date(),
+      })
+      .where(eq(articles.id, articleRecord.id));
     throw err;
   }
+}
+
+export async function generateDailyDigest(dateStr: string): Promise<{
+  deepDiveIds: number[];
+  briefIds: number[];
+  errors: string[];
+}> {
+  // 1. Get all auto-selected clusters: selected_deep and selected_brief
+  const deepScores = await db
+    .select()
+    .from(dailyScores)
+    .where(and(eq(dailyScores.date, dateStr), eq(dailyScores.status, "selected_deep")))
+    .orderBy(desc(dailyScores.finalScore));
+
+  const briefScores = await db
+    .select()
+    .from(dailyScores)
+    .where(and(eq(dailyScores.date, dateStr), eq(dailyScores.status, "selected_brief")))
+    .orderBy(desc(dailyScores.finalScore));
+
+  // 2. Generate deep dive articles (sequential)
+  const deepDiveIds: number[] = [];
+  const errors: string[] = [];
+
+  for (const score of deepScores) {
+    try {
+      const id = await generateClusterDeepDive(score.id);
+      deepDiveIds.push(id);
+    } catch (err) {
+      errors.push(`Deep dive ${score.id}: ${String(err)}`);
+    }
+  }
+
+  // 3. Generate briefs (sequential)
+  const briefIds: number[] = [];
+
+  for (const score of briefScores) {
+    try {
+      const id = await generateClusterBrief(score.id);
+      briefIds.push(id);
+    } catch (err) {
+      errors.push(`Brief ${score.id}: ${String(err)}`);
+    }
+  }
+
+  return { deepDiveIds, briefIds, errors };
 }

@@ -137,7 +137,10 @@ ${materialPack}
 export function articlePrompt(
   outline: string,
   materialPack: string,
-  meta: { hnUrl: string; sourceUrl: string; images: string[] }
+  meta: {
+    sources: Array<{ title: string; url: string; hnUrl: string; score: number }>;
+    images: string[];
+  }
 ) {
   const imageInstruction = meta.images.length > 0
     ? `\n## 插图
@@ -152,6 +155,10 @@ ${meta.images.map((url, i) => `- 图${i + 1}: ${url}`).join("\n")}
 - 用 **加粗** 标记关键数据和结论
 - 用 --- 分隔线划分段落节奏
 - 不要插入任何图片占位符`;
+
+  const sourcesSection = meta.sources
+    .map((s) => `- [${s.title}](${s.url})（HN ${s.score} 分）[讨论](${s.hnUrl})`)
+    .join("\n");
 
   return {
     system: `你是一位在AI和科技领域深耕多年的技术博主，为微信公众号写深度解读文章。
@@ -221,8 +228,7 @@ ${imageInstruction}
 ---
 
 **来源与参考**
-- 原文链接：[标题](${meta.sourceUrl})
-- HN 讨论：[查看完整讨论](${meta.hnUrl})
+${sourcesSection}
 
 ## 绝对禁止
 - ❌ "首先/其次/最后/总而言之/综上所述"

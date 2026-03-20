@@ -6,6 +6,7 @@ LAUNCH_AGENTS_DIR="$HOME/Library/LaunchAgents"
 PLISTS=(
   "com.articleproducer.sample.plist"
   "com.articleproducer.score.plist"
+  "com.articleproducer.aggregate.plist"
 )
 
 mkdir -p "$LAUNCH_AGENTS_DIR"
