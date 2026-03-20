@@ -88,28 +88,25 @@ export async function searchImages(topic: string): Promise<string[]> {
   try {
     const result = await withRetry(() =>
       qwenChat(
-        "你是一个图片搜索助手。",
-        `请搜索以下科技话题相关的高质量图片，返回 3-5 张图片的直链 URL。
+        "你是一个图片搜索助手。请搜索相关图片并返回可直接访问的图片URL。",
+        `请搜索以下科技话题相关的图片URL。
 
 话题：${topic}
 
 要求：
-- 优先找：产品截图、架构图、技术示意图、数据可视化图、新闻配图
-- 图片必须是可以直接访问的 HTTPS URL（以 .jpg, .png, .webp 结尾）
-- 不要返回 SVG、GIF、或需要登录才能看的图片
-- 不要返回 logo、icon 等小图
+- 找产品截图、架构图、技术示意图、新闻配图
+- 返回可以直接在浏览器中打开的图片 URL（https 开头）
+- 如果搜索到的图片来自新闻网站或博客，直接返回图片的 src 地址
 
-返回 JSON（直接输出，不要代码块）：
-{"images": ["https://example.com/image1.jpg", "https://example.com/image2.png"]}`,
+返回 JSON：{"images": ["url1", "url2"]}
+如果找不到可直接访问的图片URL，返回：{"images": []}`,
         { search: true, json: true }
       )
     );
     const parsed = JSON.parse(result);
-    const urls = parsed.images ?? parsed.image_urls ?? [];
-    // 验证是合法的图片 URL
+    const urls = parsed.images ?? [];
     return urls.filter((url: string) =>
-      url.startsWith("https://") &&
-      /\.(jpg|jpeg|png|webp)(\?.*)?$/i.test(url)
+      url.startsWith("https://") && url.length > 20
     ).slice(0, 3);
   } catch {
     return [];
