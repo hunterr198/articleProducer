@@ -1,8 +1,12 @@
 import * as cheerio from "cheerio";
 
-export async function scrapeUrl(url: string): Promise<string> {
+export interface ScrapeResult {
+  content: string;
+  images: string[]; // 提取的图片 URL 列表
+}
+
+export async function scrapeUrl(url: string): Promise<ScrapeResult> {
   try {
-    // First try: fetch + cheerio (fast)
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10000);
 
@@ -12,26 +16,64 @@ export async function scrapeUrl(url: string): Promise<string> {
     });
     clearTimeout(timeout);
 
-    if (!res.ok) return "";
+    if (!res.ok) return { content: "", images: [] };
     const html = await res.text();
-    const content = extractContent(html, url);
+    const result = extractContent(html, url);
 
-    if (content.length >= 200) return content;
+    if (result.content.length >= 200) return result;
 
     // Fallback: puppeteer for JS-rendered pages
     return await scrapeWithPuppeteer(url);
   } catch {
-    return "";
+    return { content: "", images: [] };
   }
 }
 
-function extractContent(html: string, url: string): string {
+function extractContent(html: string, url: string): ScrapeResult {
   const $ = cheerio.load(html);
 
   // Remove noise
   $(
     "script, style, nav, footer, header, aside, .sidebar, .ads, .comments, .nav, .menu, .footer"
   ).remove();
+
+  // Extract images (before removing elements, from the main content area)
+  const images: string[] = [];
+  const seenUrls = new Set<string>();
+
+  $("article img, main img, .post-content img, .entry-content img, .article-body img, img").each((_, el) => {
+    const src = $(el).attr("src") || $(el).attr("data-src") || "";
+    if (!src || seenUrls.has(src)) return;
+
+    // 过滤掉小图标、tracking pixels、logo 等
+    const width = parseInt($(el).attr("width") || "0");
+    const height = parseInt($(el).attr("height") || "0");
+    if ((width > 0 && width < 100) || (height > 0 && height < 100)) return;
+
+    // 过滤掉常见的非内容图片
+    const srcLower = src.toLowerCase();
+    if (
+      srcLower.includes("logo") ||
+      srcLower.includes("icon") ||
+      srcLower.includes("avatar") ||
+      srcLower.includes("favicon") ||
+      srcLower.includes("pixel") ||
+      srcLower.includes("tracking") ||
+      srcLower.includes("badge") ||
+      srcLower.includes("button") ||
+      srcLower.endsWith(".svg") ||
+      srcLower.endsWith(".gif") && !srcLower.includes("animation")
+    ) return;
+
+    // 处理相对路径
+    let absoluteUrl = src;
+    try {
+      absoluteUrl = new URL(src, url).href;
+    } catch { /* keep original */ }
+
+    seenUrls.add(src);
+    images.push(absoluteUrl);
+  });
 
   // Special: arXiv
   if (url.includes("arxiv.org")) {
@@ -43,7 +85,7 @@ function extractContent(html: string, url: string): string {
       .text()
       .replace(/^Title:\s*/i, "")
       .trim();
-    return `${title}\n\n${abstract}`;
+    return { content: `${title}\n\n${abstract}`, images: images.slice(0, 5) };
   }
 
   // Try semantic elements first
@@ -76,10 +118,12 @@ function extractContent(html: string, url: string): string {
   }
 
   // Clean up whitespace
-  return content.replace(/\s+/g, " ").trim().slice(0, 10000);
+  content = content.replace(/\s+/g, " ").trim().slice(0, 10000);
+
+  return { content, images: images.slice(0, 5) }; // 最多保留 5 张图
 }
 
-async function scrapeWithPuppeteer(url: string): Promise<string> {
+async function scrapeWithPuppeteer(url: string): Promise<ScrapeResult> {
   try {
     const puppeteer = await import("puppeteer");
     const browser = await puppeteer.default.launch({ headless: true });
@@ -90,6 +134,6 @@ async function scrapeWithPuppeteer(url: string): Promise<string> {
     await browser.close();
     return extractContent(html, url);
   } catch {
-    return "";
+    return { content: "", images: [] };
   }
 }

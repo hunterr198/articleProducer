@@ -85,9 +85,16 @@ async function generateDeepDive(dailyScoreId: number): Promise<number> {
     const materialPackStr = JSON.stringify(researchResult.materialPack);
     const outline = await generateOutline(materialPackStr);
 
-    // Step 3: Generate article (Qwen)
+    // Step 3: Generate article (Qwen) — with images and source links
     const outlineStr = JSON.stringify(outline);
-    const draft = await qwenGenerateArticle(outlineStr, materialPackStr);
+    const hnUrl = `https://news.ycombinator.com/item?id=${story.id}`;
+    const sourceUrl = story.url ?? hnUrl;
+    const images = researchResult.images ?? [];
+    const draft = await qwenGenerateArticle(outlineStr, materialPackStr, {
+      hnUrl,
+      sourceUrl,
+      images,
+    });
 
     // Step 4: 3-pass review (Qwen)
     const reviewed = await reviewArticle(draft, materialPackStr, "deep_dive");

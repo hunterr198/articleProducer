@@ -10,6 +10,7 @@ import type { MaterialPack } from "@/lib/ai/types";
 export interface ResearchResult {
   storyId: number;
   originalContent: string;
+  images: string[];
   hnComments: { author: string; text: string }[];
   webSearchResults: { title: string; snippet: string; url: string }[];
   materialPack: MaterialPack;
@@ -22,10 +23,10 @@ export async function runResearch(story: {
   storyType: string | null;
 }): Promise<ResearchResult> {
   // Run research tasks in parallel
-  const [originalContent, commentsData, webSearchResults] = await Promise.all([
-    // A: Scrape source article (skip for Ask HN)
+  const [scrapeResult, commentsData, webSearchResults] = await Promise.all([
+    // A: Scrape source article + extract images (skip for Ask HN)
     story.storyType === "ask_hn" || !story.url
-      ? Promise.resolve("")
+      ? Promise.resolve({ content: "", images: [] })
       : scrapeUrl(story.url),
 
     // B: Fetch HN comments
@@ -36,6 +37,9 @@ export async function runResearch(story: {
     // C: Web search for supplementary context
     searchWeb(story.title, 3),
   ]);
+
+  const originalContent = scrapeResult.content;
+  const images = scrapeResult.images;
 
   // Format comments for GPT
   const hnCommentsText = commentsData
@@ -54,38 +58,34 @@ export async function runResearch(story: {
     webSearch: webSearchText,
   });
 
-  // Store in database
+  // Store in database (including images)
   const now = new Date();
+  const researchData = {
+    originalContent,
+    hnComments: JSON.stringify(commentsData),
+    webSearch: JSON.stringify({ results: webSearchResults, images }),
+    aiSummary: JSON.stringify(materialPack),
+    updatedAt: now,
+  };
+
   const existing = await db.query.research.findFirst({
     where: eq(research.storyId, story.id),
   });
 
   if (existing) {
-    await db
-      .update(research)
-      .set({
-        originalContent,
-        hnComments: JSON.stringify(commentsData),
-        webSearch: JSON.stringify(webSearchResults),
-        aiSummary: JSON.stringify(materialPack),
-        updatedAt: now,
-      })
-      .where(eq(research.storyId, story.id));
+    await db.update(research).set(researchData).where(eq(research.storyId, story.id));
   } else {
     await db.insert(research).values({
       storyId: story.id,
-      originalContent,
-      hnComments: JSON.stringify(commentsData),
-      webSearch: JSON.stringify(webSearchResults),
-      aiSummary: JSON.stringify(materialPack),
+      ...researchData,
       createdAt: now,
-      updatedAt: now,
     });
   }
 
   return {
     storyId: story.id,
     originalContent,
+    images,
     hnComments: commentsData,
     webSearchResults,
     materialPack,

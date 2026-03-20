@@ -45,9 +45,10 @@ async function qwenChat(
 
 export async function generateArticle(
   outline: string,
-  materialPack: string
+  materialPack: string,
+  meta: { hnUrl: string; sourceUrl: string; images: string[] } = { hnUrl: "", sourceUrl: "", images: [] }
 ): Promise<string> {
-  const prompt = articlePrompt(outline, materialPack);
+  const prompt = articlePrompt(outline, materialPack, meta);
   return withRetry(() => qwenChat(prompt.system, prompt.user));
 }
 
