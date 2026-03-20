@@ -1,7 +1,8 @@
 import { logNormalize } from "./normalize";
 import { db } from "@/lib/db";
-import { snapshots, dailyScores, stories } from "@/lib/db/schema";
+import { snapshots, dailyScores, stories, topicClusters } from "@/lib/db/schema";
 import { eq, and, gte, lt, sql } from "drizzle-orm";
+import type { Cluster } from "./clusterer";
 
 export function computeSustainedPresence(
   appearances: number,
@@ -65,6 +66,149 @@ function daysBetween(dateA: string, dateB: string): number {
   const a = new Date(dateA).getTime();
   const b = new Date(dateB).getTime();
   return Math.round(Math.abs(b - a) / (1000 * 60 * 60 * 24));
+}
+
+/**
+ * Score clusters produced by the aggregation pipeline.
+ * Computes the 5 scoring dimensions per cluster, applies cooling, and inserts into daily_scores.
+ */
+export async function scoreClusters(
+  clusters: Cluster[],
+  storyMap: Map<number, { maxScore: number; maxComments: number; appearances: number; firstScore: number; latestScore: number }>,
+  totalSamples: number,
+  dateStr: string
+): Promise<void> {
+  if (clusters.length === 0) return;
+
+  // Build per-cluster metrics
+  const clusterMetrics = clusters.map((cluster) => {
+    // Aggregate appearances across all stories in the cluster
+    let totalAppearances = 0;
+    let maxScore = 0;
+    let maxComments = 0;
+    let firstScore = 0;
+    let latestScore = 0;
+    let commentGrowth = 0;
+
+    for (const storyId of cluster.storyIds) {
+      const data = storyMap.get(storyId);
+      if (!data) continue;
+      totalAppearances += data.appearances;
+      maxScore = Math.max(maxScore, data.maxScore);
+      maxComments = Math.max(maxComments, data.maxComments);
+      // Use primary story's score trajectory for growth
+      if (storyId === cluster.primaryStoryId) {
+        firstScore = data.firstScore;
+        latestScore = data.latestScore;
+        commentGrowth = data.maxComments; // approximate
+      }
+    }
+
+    return {
+      cluster,
+      totalAppearances,
+      maxScore,
+      maxComments,
+      firstScore,
+      latestScore,
+      commentGrowth,
+    };
+  });
+
+  // Update totalAppearances in the DB for each cluster
+  for (const cm of clusterMetrics) {
+    await db
+      .update(topicClusters)
+      .set({ totalAppearances: cm.totalAppearances })
+      .where(eq(topicClusters.id, cm.cluster.id));
+  }
+
+  // Compute normalization maxes across all clusters
+  const allMaxComments = Math.max(...clusterMetrics.map((m) => m.maxComments), 1);
+  const allMaxRatio = Math.max(
+    ...clusterMetrics.map((m) =>
+      m.maxScore > 0 ? m.maxComments / m.maxScore : 0
+    ),
+    0.1
+  );
+  const allMaxScoreGrowth = Math.max(
+    ...clusterMetrics.map((m) => Math.max(0, m.latestScore - m.firstScore)),
+    1
+  );
+  const allMaxCommentGrowth = Math.max(
+    ...clusterMetrics.map((m) => m.commentGrowth),
+    1
+  );
+
+  // Apply cooling mechanism — check recent selections for the primary story
+  const recentSelections = await db
+    .select({ storyId: dailyScores.storyId, date: dailyScores.date })
+    .from(dailyScores)
+    .where(
+      and(
+        sql`${dailyScores.status} IN ('selected_deep', 'selected_brief')`,
+        gte(dailyScores.date, getDateNDaysAgo(dateStr, 3))
+      )
+    );
+
+  const selectionDaysAgo = new Map<number, number>();
+  for (const sel of recentSelections) {
+    const daysAgo = daysBetween(sel.date, dateStr);
+    const existing = selectionDaysAgo.get(sel.storyId);
+    if (existing === undefined || daysAgo < existing) {
+      selectionDaysAgo.set(sel.storyId, daysAgo);
+    }
+  }
+
+  // Score each cluster and insert into daily_scores
+  for (const cm of clusterMetrics) {
+    const sustainedPresence = computeSustainedPresence(
+      cm.totalAppearances,
+      totalSamples
+    );
+    const discussionDepth = computeDiscussionDepth(
+      { commentsCount: cm.maxComments, score: cm.maxScore },
+      { maxComments: allMaxComments, maxRatio: allMaxRatio }
+    );
+    const growthTrend = computeGrowthTrend(
+      {
+        firstScore: cm.firstScore,
+        latestScore: cm.latestScore,
+        commentGrowthRate: cm.commentGrowth,
+      },
+      {
+        maxScoreGrowth: allMaxScoreGrowth,
+        maxCommentGrowth: allMaxCommentGrowth,
+      }
+    );
+
+    const decayFactor = getCoolingDecay(
+      selectionDaysAgo.get(cm.cluster.primaryStoryId)
+    );
+
+    const finalScore =
+      computeFinalScore({
+        sustainedPresence,
+        discussionDepth,
+        growthTrend,
+        writability: 50, // placeholder until AI evaluation
+        freshness: 50, // placeholder until freshness check
+      }) * decayFactor;
+
+    await db.insert(dailyScores).values({
+      storyId: cm.cluster.primaryStoryId,
+      date: dateStr,
+      appearanceCount: cm.totalAppearances,
+      discussionScore: discussionDepth,
+      trendScore: growthTrend,
+      writabilityScore: 50,
+      freshnessScore: 50,
+      finalScore: Math.round(finalScore),
+      status: "candidate",
+      clusterId: cm.cluster.id,
+      createdAt: new Date(),
+    });
+  }
 }
 
 export async function runDailyScoring(dateStr: string): Promise<{

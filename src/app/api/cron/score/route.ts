@@ -1,32 +1,14 @@
 import { NextResponse } from "next/server";
-import { runDailyScoring } from "@/lib/scoring/scorer";
-import { evaluateTopCandidates } from "@/lib/scoring/ai-evaluator";
+import { runDailyAggregation } from "@/lib/pipeline/aggregator";
 
 export async function GET() {
   try {
-    // Use Beijing time for date
     const dateStr = new Intl.DateTimeFormat("sv-SE", {
       timeZone: "Asia/Shanghai",
-    }).format(new Date()); // sv-SE locale gives YYYY-MM-DD format
+    }).format(new Date());
 
-    const result = await runDailyScoring(dateStr);
-
-    let aiResult: { evaluated: number; errors: string[] } | null = null;
-    if (result.candidatesCount > 0) {
-      try {
-        aiResult = await evaluateTopCandidates(dateStr);
-      } catch (aiError) {
-        console.error("AI evaluation failed:", aiError);
-        // Basic scoring still succeeded; AI eval failure is non-fatal
-      }
-    }
-
-    return NextResponse.json({
-      success: true,
-      date: dateStr,
-      ...result,
-      aiEvaluation: aiResult,
-    });
+    const result = await runDailyAggregation(dateStr);
+    return NextResponse.json({ success: true, date: dateStr, ...result });
   } catch (error) {
     return NextResponse.json(
       { success: false, error: String(error) },
