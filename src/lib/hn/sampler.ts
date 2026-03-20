@@ -92,7 +92,7 @@ export async function runSample(): Promise<SampleResult> {
   await log("info", "sampler", `Sample complete: ${storyList.length} stories, ${newCount} new`);
 
   return {
-    storiesCount: Math.min(storyList.length, TOP_N),
+    storiesCount: storyList.length,
     newStories: newCount,
     sampledAt: now,
   };
