@@ -5,6 +5,7 @@ import { scrapeUrl } from "./scraper";
 import { searchWeb } from "./search";
 import { fetchStoryWithComments } from "@/lib/hn/algolia-api";
 import { analyzeMaterials } from "@/lib/ai/gpt";
+import { searchImages } from "@/lib/ai/qwen";
 import type { MaterialPack } from "@/lib/ai/types";
 
 export interface ResearchResult {
@@ -39,7 +40,12 @@ export async function runResearch(story: {
   ]);
 
   const originalContent = scrapeResult.content;
-  const images = scrapeResult.images;
+  let images = scrapeResult.images;
+
+  // 如果爬虫没抓到有效图片，用 Qwen 联网搜索补充
+  if (images.length === 0) {
+    images = await searchImages(story.title);
+  }
 
   // Format comments for GPT
   const hnCommentsText = commentsData

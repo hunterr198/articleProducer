@@ -61,8 +61,11 @@ function extractContent(html: string, url: string): ScrapeResult {
       srcLower.includes("tracking") ||
       srcLower.includes("badge") ||
       srcLower.includes("button") ||
+      srcLower.includes("shields.io") ||
+      srcLower.includes("camo.githubusercontent.com") ||
+      srcLower.includes("img.shields.io") ||
       srcLower.endsWith(".svg") ||
-      srcLower.endsWith(".gif") && !srcLower.includes("animation")
+      (srcLower.endsWith(".gif") && !srcLower.includes("animation"))
     ) return;
 
     // 处理相对路径

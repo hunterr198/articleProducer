@@ -83,6 +83,39 @@ export async function reviewArticle(
 
 // --- Qwen 联网搜索能力 ---
 
+// 搜索相关图片 URL
+export async function searchImages(topic: string): Promise<string[]> {
+  try {
+    const result = await withRetry(() =>
+      qwenChat(
+        "你是一个图片搜索助手。",
+        `请搜索以下科技话题相关的高质量图片，返回 3-5 张图片的直链 URL。
+
+话题：${topic}
+
+要求：
+- 优先找：产品截图、架构图、技术示意图、数据可视化图、新闻配图
+- 图片必须是可以直接访问的 HTTPS URL（以 .jpg, .png, .webp 结尾）
+- 不要返回 SVG、GIF、或需要登录才能看的图片
+- 不要返回 logo、icon 等小图
+
+返回 JSON（直接输出，不要代码块）：
+{"images": ["https://example.com/image1.jpg", "https://example.com/image2.png"]}`,
+        { search: true, json: true }
+      )
+    );
+    const parsed = JSON.parse(result);
+    const urls = parsed.images ?? parsed.image_urls ?? [];
+    // 验证是合法的图片 URL
+    return urls.filter((url: string) =>
+      url.startsWith("https://") &&
+      /\.(jpg|jpeg|png|webp)(\?.*)?$/i.test(url)
+    ).slice(0, 3);
+  } catch {
+    return [];
+  }
+}
+
 // 补充搜索：用 Qwen 联网搜索获取话题背景信息
 export async function searchWithQwen(query: string): Promise<string> {
   return withRetry(() =>
