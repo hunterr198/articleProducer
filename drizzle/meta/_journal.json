@@ -8,6 +8,13 @@
       "when": 1773841260240,
       "tag": "0000_broken_grim_reaper",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1774014731584,
+      "tag": "0001_boring_misty_knight",
+      "breakpoints": true
     }
   ]
 }

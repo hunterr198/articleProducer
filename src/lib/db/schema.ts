@@ -42,6 +42,7 @@ export const dailyScores = sqliteTable("daily_scores", {
   aiAnalysis: text("ai_analysis"), // JSON
   status: text("status").$type<"candidate" | "selected_deep" | "selected_brief" | "skipped">().default("candidate"),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+  clusterId: integer("cluster_id"),
 }, (table) => [
   index("idx_daily_scores_date_status").on(table.date, table.status),
   index("idx_daily_scores_story_date").on(table.storyId, table.date),
@@ -85,3 +86,17 @@ export const systemLogs = sqliteTable("system_logs", {
   details: text("details"), // JSON
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
 });
+
+export const topicClusters = sqliteTable("topic_clusters", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  date: text("date").notNull(),
+  label: text("label").notNull(),
+  primaryStoryId: integer("primary_story_id").notNull().references(() => stories.id),
+  storyIds: text("story_ids").notNull(), // JSON array of story IDs
+  mergedScore: integer("merged_score"),
+  mergedComments: integer("merged_comments"),
+  totalAppearances: integer("total_appearances"),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+}, (table) => [
+  index("idx_topic_clusters_date").on(table.date),
+]);
