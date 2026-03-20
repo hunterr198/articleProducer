@@ -72,6 +72,11 @@ export default function ArticlesPage() {
 
   const articles = data?.articles ?? [];
 
+  // Compute today's date string for the digest link
+  const todayStr = new Intl.DateTimeFormat("sv-SE", {
+    timeZone: "Asia/Shanghai",
+  }).format(new Date());
+
   return (
     <div className="max-w-6xl mx-auto p-6 space-y-6">
       <div className="flex items-center justify-between">
@@ -81,9 +86,18 @@ export default function ArticlesPage() {
             {data?.date} · {articles.length} 篇文章
           </p>
         </div>
-        <Link href="/topics">
-          <Button variant="outline">返回选题</Button>
-        </Link>
+        <div className="flex items-center gap-2">
+          <a
+            href={`/api/articles/digest?date=${todayStr}`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <Button variant="outline">查看今日日报</Button>
+          </a>
+          <Link href="/topics">
+            <Button variant="outline">返回选题</Button>
+          </Link>
+        </div>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { snapshots, dailyScores, articles, systemLogs } from "@/lib/db/schema";
-import { desc, eq, gte, count } from "drizzle-orm";
+import { snapshots, dailyScores, articles, systemLogs, topicClusters } from "@/lib/db/schema";
+import { desc, eq, gte, count, and, inArray } from "drizzle-orm";
 
 export async function GET() {
   const dateStr = new Intl.DateTimeFormat("sv-SE", {
@@ -16,11 +16,22 @@ export async function GET() {
     .from(snapshots)
     .where(gte(snapshots.sampledAt, dayStart));
 
-  // Candidate count
-  const [candidates] = await db
+  // Cluster count for today
+  const [clusterCount] = await db
+    .select({ value: count() })
+    .from(topicClusters)
+    .where(eq(topicClusters.date, dateStr));
+
+  // Auto-selected count (selected_deep + selected_brief) for today
+  const [autoSelectedCount] = await db
     .select({ value: count() })
     .from(dailyScores)
-    .where(eq(dailyScores.date, dateStr));
+    .where(
+      and(
+        eq(dailyScores.date, dateStr),
+        inArray(dailyScores.status, ["selected_deep", "selected_brief"])
+      )
+    );
 
   // Article count today
   const [articleCount] = await db
@@ -45,7 +56,8 @@ export async function GET() {
   return NextResponse.json({
     samplesCollected: todaySnapshots.length,
     samplesTotal: 8,
-    candidatesCount: candidates?.value ?? 0,
+    clusterCount: clusterCount?.value ?? 0,
+    autoSelectedCount: autoSelectedCount?.value ?? 0,
     articlesCount: articleCount?.value ?? 0,
     lastSampleAt: lastSnapshot[0]?.sampledAt ?? null,
     recentLogs: recentLogs.map((l) => ({
