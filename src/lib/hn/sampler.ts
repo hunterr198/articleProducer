@@ -5,7 +5,6 @@ import type { HNStory } from "./types";
 import { eq, gte } from "drizzle-orm";
 
 const DEDUP_WINDOW_MS = 2 * 60 * 60 * 1000; // 2 hours
-const TOP_N = 30; // Only track top 30
 
 interface SampleResult {
   storiesCount: number;
@@ -45,7 +44,8 @@ export async function runSample(): Promise<SampleResult> {
 
   // Upsert stories and create snapshots
   let newCount = 0;
-  for (const [index, story] of storyList.slice(0, TOP_N).entries()) {
+  // 存全部帖子（过滤在汇总阶段做，不在采样时做）
+  for (const [index, story] of storyList.entries()) {
     const existing = await db.query.stories.findFirst({
       where: eq(stories.id, story.id),
     });
