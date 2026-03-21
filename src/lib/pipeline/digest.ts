@@ -9,13 +9,8 @@ export async function assembleDailyDigest(dateStr: string): Promise<string> {
   const allArticles = await db
     .select()
     .from(articles)
-    .where(
-      and(
-        gte(articles.createdAt, dayStart),
-      )
-    );
+    .where(gte(articles.createdAt, dayStart));
 
-  // Filter to today's articles that aren't failed
   const todayArticles = allArticles.filter(
     (a) => a.createdAt <= dayEnd && a.status !== "failed" && a.status !== "generating"
   );
@@ -23,26 +18,42 @@ export async function assembleDailyDigest(dateStr: string): Promise<string> {
   const deepDives = todayArticles.filter((a) => a.type === "deep_dive");
   const briefs = todayArticles.filter((a) => a.type === "brief");
 
-  let md = `# 科技日报 ${dateStr}\n\n`;
+  // 日报头部
+  const dateDisplay = dateStr.replace(/-/g, ".");
+  let md = `# 前沿科技热点日报 · ${dateDisplay}\n\n`;
+  md += `> 每日精选 AI 与前沿科技领域最值得关注的动态\n\n`;
+  md += `---\n\n`;
 
+  // 深度分析
   if (deepDives.length > 0) {
     md += `## 今日深度\n\n`;
     deepDives.forEach((article, i) => {
       const content = article.contentEdited || article.contentReviewed || article.contentMd || "";
       md += `### ${i + 1}. ${article.title ?? "Untitled"}\n\n`;
       md += `${content}\n\n`;
+      if (i < deepDives.length - 1) {
+        md += `---\n\n`;
+      }
     });
   }
 
+  // 快讯
   if (briefs.length > 0) {
-    md += `---\n\n## 快讯\n\n`;
-    briefs.forEach((article) => {
+    md += `\n---\n\n`;
+    md += `## 快讯\n\n`;
+    briefs.forEach((article, i) => {
       const content = article.contentEdited || article.contentReviewed || article.contentMd || "";
-      md += `- **${article.title ?? "Untitled"}**：${content}\n\n`;
+      md += `### ${article.title ?? "Untitled"}\n\n`;
+      md += `${content}\n\n`;
+      if (i < briefs.length - 1) {
+        md += `---\n\n`;
+      }
     });
   }
 
-  md += `---\n\n> 今天的内容就到这里，你对哪个话题最感兴趣？欢迎留言讨论。\n`;
+  // 日报尾部
+  md += `\n---\n\n`;
+  md += `> 以上就是今天的前沿科技热点，欢迎留言讨论。\n`;
 
   return md;
 }

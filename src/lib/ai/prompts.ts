@@ -111,7 +111,7 @@ export function outlinePrompt(materialPack: string) {
     user: `# 素材包
 ${materialPack}
 
-# 任务：设计一篇 2000-3000 字的深度解读文章大纲
+# 任务：设计一篇约 2000 字的深度解读文章大纲
 
 ## 文章结构要求（必须包含以下 5-7 个段落）
 
@@ -254,7 +254,7 @@ ${sourcesSection}
 export function briefPrompt(title: string, score: number, comments: number, summary: string, sourceUrl?: string) {
   return {
     system: `你是一位科技媒体编辑，正在写日报快讯栏目。`,
-    user: `用 80-150 字写一条科技快讯。
+    user: `用 200-250 字写一条科技快讯。这是公众号日报中的快讯栏目。
 
 素材：
 标题：${title}
@@ -262,15 +262,14 @@ export function briefPrompt(title: string, score: number, comments: number, summ
 ${sourceUrl ? `原文链接：${sourceUrl}` : ""}
 
 要求：
-- 直接描述事件本身，不要提 Hacker News、热度、评论数
-- 第一句：发生了什么（who did what）
-- 第二句：为什么重要或有什么影响
-- 可选第三句：一个关键数据或细节
+- 直接描述事件本身，不要提 Hacker News、热度、评论数等来源信息
+- 用 2-3 段把事情说清楚：发生了什么 → 为什么重要 → 一个关键细节或数据
+- 关键信息用 **加粗** 标记
 - 技术术语保留英文
-- 语气客观平实，不加感叹词
-${sourceUrl ? `- 最后附上链接：[详情](${sourceUrl})` : ""}
+- 语气客观平实，不加感叹词和夸张表达
+${sourceUrl ? `- 末尾另起一行附链接：[阅读原文](${sourceUrl})` : ""}
 
-直接输出快讯正文。`
+直接输出快讯正文（Markdown 格式）。`
   };
 }
 
