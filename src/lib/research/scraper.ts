@@ -42,8 +42,12 @@ function extractContent(html: string, url: string): ScrapeResult {
   const seenUrls = new Set<string>();
 
   $("article img, main img, .post-content img, .entry-content img, .article-body img, img").each((_, el) => {
-    const src = $(el).attr("src") || $(el).attr("data-src") || "";
+    // 优先取 data-src（懒加载真实地址），其次 src
+    const src = $(el).attr("data-src") || $(el).attr("src") || "";
     if (!src || seenUrls.has(src)) return;
+
+    // 过滤掉 base64 占位符和 SVG 占位符
+    if (src.startsWith("data:")) return;
 
     // 过滤掉小图标、tracking pixels、logo 等
     const width = parseInt($(el).attr("width") || "0");
