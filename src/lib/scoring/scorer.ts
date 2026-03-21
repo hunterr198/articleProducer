@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { snapshots, dailyScores, stories, topicClusters } from "@/lib/db/schema";
 import { eq, and, gte, lt, sql } from "drizzle-orm";
 import type { Cluster } from "./clusterer";
+import { evaluateWritabilityBatch } from "./writability";
 
 export function computeSustainedPresence(
   appearances: number,
@@ -33,18 +34,13 @@ export function computeGrowthTrend(
 }
 
 export function computeFinalScore(dimensions: {
-  sustainedPresence: number;
-  discussionDepth: number;
-  growthTrend: number;
-  writability: number;
-  freshness: number;
+  hnEngagement: number;  // HN 热度信号 (0-100): sustainedPresence + discussionDepth + growthTrend
+  writability: number;   // AI 可写性评估 (0-100): 话题深度 + 受众匹配 + 争议性
 }): number {
+  // HN 热度 65% + AI 可写性 35%
   return Math.round(
-    dimensions.sustainedPresence * 0.25 +
-    dimensions.discussionDepth * 0.25 +
-    dimensions.growthTrend * 0.20 +
-    dimensions.writability * 0.20 +
-    dimensions.freshness * 0.10
+    dimensions.hnEngagement * 0.65 +
+    dimensions.writability * 0.35
   );
 }
 
@@ -160,6 +156,24 @@ export async function scoreClusters(
     }
   }
 
+  // AI writability evaluation (batch call)
+  const writabilityInput = clusterMetrics.map((cm) => {
+    const primaryStory = clusters.find((c) => c.id === cm.cluster.id);
+    const storyDetail = primaryStory
+      ? { id: cm.cluster.primaryStoryId, title: cm.cluster.label, url: undefined as string | undefined, score: cm.maxScore, commentsCount: cm.maxComments }
+      : { id: cm.cluster.primaryStoryId, title: cm.cluster.label, score: cm.maxScore, commentsCount: cm.maxComments };
+    // Try to get URL from DB
+    return storyDetail;
+  });
+
+  // Fetch URLs for primary stories
+  for (const input of writabilityInput) {
+    const story = await db.query.stories.findFirst({ where: eq(stories.id, input.id) });
+    if (story?.url) input.url = story.url;
+  }
+
+  const writabilityScores = await evaluateWritabilityBatch(writabilityInput);
+
   // Score each cluster and insert into daily_scores
   for (const cm of clusterMetrics) {
     const sustainedPresence = computeSustainedPresence(
@@ -182,17 +196,23 @@ export async function scoreClusters(
       }
     );
 
+    // HN engagement: combine three data dimensions (each 0-100, weighted)
+    const hnEngagement =
+      sustainedPresence * 0.30 +
+      discussionDepth * 0.40 +
+      growthTrend * 0.30;
+
+    // AI writability score (0-100), default 50 if evaluation failed
+    const aiWritability = writabilityScores.get(cm.cluster.primaryStoryId) ?? 50;
+
     const decayFactor = getCoolingDecay(
       selectionDaysAgo.get(cm.cluster.primaryStoryId)
     );
 
     const finalScore =
       computeFinalScore({
-        sustainedPresence,
-        discussionDepth,
-        growthTrend,
-        writability: 50, // placeholder until AI evaluation
-        freshness: 50, // placeholder until freshness check
+        hnEngagement,
+        writability: aiWritability,
       }) * decayFactor;
 
     await db.insert(dailyScores).values({
@@ -201,8 +221,8 @@ export async function scoreClusters(
       appearanceCount: cm.totalAppearances,
       discussionScore: discussionDepth,
       trendScore: growthTrend,
-      writabilityScore: 50,
-      freshnessScore: 50,
+      writabilityScore: aiWritability,
+      freshnessScore: 0, // deprecated
       finalScore: Math.round(finalScore),
       status: "candidate",
       clusterId: cm.cluster.id,
@@ -332,12 +352,13 @@ export async function runDailyScoring(dateStr: string): Promise<{
   // Insert daily scores
   for (const item of preliminary) {
     const decayFactor = getCoolingDecay(selectionDaysAgo.get(item.storyId));
+    const hnEngagement =
+      item.sustainedPresence * 0.30 +
+      item.discussionDepth * 0.40 +
+      item.growthTrend * 0.30;
     const finalScore = computeFinalScore({
-      sustainedPresence: item.sustainedPresence,
-      discussionDepth: item.discussionDepth,
-      growthTrend: item.growthTrend,
-      writability: 50, // placeholder
-      freshness: 50,   // placeholder
+      hnEngagement,
+      writability: 50, // no AI evaluation in legacy path
     }) * decayFactor;
 
     await db.insert(dailyScores).values({

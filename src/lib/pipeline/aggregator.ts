@@ -113,55 +113,27 @@ export async function runDailyAggregation(dateStr: string): Promise<{
 
   await scoreClusters(clusters, storyMap, totalSamples, dateStr);
 
-  // Step 5: Auto-select (Top 3 deep + rest as briefs)
+  // Step 5: Auto-select — Top 6 by finalScore, first 3 deep, next 3 brief
   const allScored = await db
     .select()
     .from(dailyScores)
     .where(eq(dailyScores.date, dateStr))
     .orderBy(sql`final_score DESC`);
 
-  let deepCount = 0;
-  let briefCount = 0;
   const MAX_DEEP = 3;
   const MAX_BRIEF = 3;
+  const top6 = allScored.slice(0, MAX_DEEP + MAX_BRIEF);
 
-  for (const scored of allScored) {
-    if (deepCount < MAX_DEEP) {
-      // Check if this cluster has enough depth for a deep dive
-      const cluster = await db.query.topicClusters.findFirst({
-        where: eq(topicClusters.id, scored.clusterId ?? 0),
-      });
-      const clusterStoryIds: number[] = cluster
-        ? JSON.parse(cluster.storyIds)
-        : [];
-      const hasMultipleSources = clusterStoryIds.length > 1;
-      const hasEnoughComments =
-        (scored.discussionScore ?? 0) > 30 || hasMultipleSources;
-
-      if (hasEnoughComments) {
-        await db
-          .update(dailyScores)
-          .set({ status: "selected_deep" })
-          .where(eq(dailyScores.id, scored.id));
-        deepCount++;
-      } else {
-        // Not enough depth, make it a brief
-        if (briefCount < MAX_BRIEF) {
-          await db
-            .update(dailyScores)
-            .set({ status: "selected_brief" })
-            .where(eq(dailyScores.id, scored.id));
-          briefCount++;
-        }
-      }
-    } else if (briefCount < MAX_BRIEF) {
-      await db
-        .update(dailyScores)
-        .set({ status: "selected_brief" })
-        .where(eq(dailyScores.id, scored.id));
-      briefCount++;
-    }
+  for (let i = 0; i < top6.length; i++) {
+    const status = i < MAX_DEEP ? "selected_deep" : "selected_brief";
+    await db
+      .update(dailyScores)
+      .set({ status })
+      .where(eq(dailyScores.id, top6[i].id));
   }
+
+  const deepCount = Math.min(MAX_DEEP, top6.length);
+  const briefCount = Math.max(0, top6.length - MAX_DEEP);
 
   return {
     totalStories,

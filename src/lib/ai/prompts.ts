@@ -1,55 +1,60 @@
-// --- WRITABILITY EVALUATION ---
-export function writabilityPrompt(story: {
-  title: string; url?: string; score: number;
-  commentsCount: number; time: string; topComments: string;
-}) {
+// --- WRITABILITY EVALUATION (lightweight, no comments needed) ---
+export function writabilityPrompt(stories: Array<{
+  id: number;
+  title: string;
+  url?: string;
+  score: number;
+  commentsCount: number;
+}>) {
+  const storyList = stories
+    .map((s) => `[ID:${s.id}] "${s.title}" | ${s.url ?? "N/A"} | ${s.score}pts ${s.commentsCount}comments`)
+    .join("\n");
+
   return {
-    system: `You are a senior tech editor at a Chinese tech media outlet.
-Your job is to evaluate whether a Hacker News story is worth writing a deep-dive article about for Chinese tech professionals.
+    system: `你是「通往 AGI」公众号的选题编辑，对标「新智元」和「机器之心」。
+你的任务是评估每个话题能不能写成一篇 2000 字的深度分析文章。
 
-IMPORTANT: Complete ALL analysis steps before providing scores. Be critical — most stories are NOT worth a deep dive.`,
+重要：先分析，再打分。大多数话题不值得深度分析——要严格。`,
 
-    user: `# Story Data
-Title: ${story.title}
-URL: ${story.url ?? "N/A"}
-Score: ${story.score}
-Comments: ${story.commentsCount}
-Posted: ${story.time}
-Top HN Comments:
-${story.topComments}
+    user: `# 待评估话题
+${storyList}
 
-# Evaluation Process — complete ALL steps in order
+# 评估方法
 
-## Step 1: Content Analysis
-- What is the core topic? Classify: AI/ML | Security | Open Source | Industry | Dev Tools | Research | Other
-- What is genuinely NEW here?
+对每个话题，按以下 3 个维度各打 1-5 分。先写一句分析理由，再打分。
 
-## Step 2: Discussion Quality
-- What are the main viewpoints in HN comments?
-- Is there genuine disagreement or just consensus?
+## 维度 1：话题深度潜力（能不能撑起 2000 字？）
+1 = 单一事实，一句话就说完了（如"某公司融了 X 亿"）
+2 = 简单新闻，最多写 500 字
+3 = 有一定深度，能展开技术原理或背景
+4 = 多层次话题，有技术面 + 商业面 + 社会影响
+5 = 极佳素材，有争议、有数据、有多方博弈，天然适合长文
 
-## Step 3: Devil's Advocate
-List 2-3 reasons why this story might NOT be worth covering.
+## 维度 2：受众匹配度（中国技术从业者在乎吗？）
+1 = 跟中国读者几乎无关（如美国本地法规细节）
+2 = 小众话题，只有极少数人关心
+3 = 有一定相关性，部分读者会感兴趣
+4 = 广泛相关，影响大部分技术从业者的工作或认知
+5 = 直接影响读者的日常工作或职业决策
 
-## Step 4: Audience Fit
-Would Chinese tech professionals (25-40, engineers/PMs/AI practitioners) care? Why?
+## 维度 3：争议与多方博弈（有没有对立观点？）
+1 = 无争议，纯公告或事实陈述
+2 = 观点较一致，没什么可辩论的
+3 = 有一些不同看法，但不强烈
+4 = 明确的多方立场，社区有真正的分歧
+5 = 尖锐对立，多个利益方公开博弈
 
-## Step 5: Scoring (ONLY after Steps 1-4)
+# HN 热度参考
+HN 的分数和评论数是重要的质量信号：
+- 300+ 分或 100+ 评论：社区高度认可，话题几乎一定有深度
+- 100-300 分：明确的社区共鸣
+- 50 以下分：需要从标题本身判断话题价值
 
-### writability [0-100]
-0-20: Just a link, no depth | 21-40: Simple news | 41-60: Some depth
-61-80: Rich topic, multiple angles | 81-100: Excellent material, strong narrative
+注意：HN 热度是参考信号，不是唯一标准。一个 50 分但话题极具深度的帖子，可能比一个 500 分但内容浅薄的帖子更值得深度分析。
 
-### audience_fit [0-100]
-0-20: Irrelevant | 21-40: Niche only | 41-60: Moderate
-61-80: Broadly relevant | 81-100: Directly impacts readers' work
-
-### freshness [0-100]
-0-20: Already widely covered in Chinese media | 41-60: Partially covered
-61-80: Barely covered, clear gap | 81-100: Completely new to Chinese audience
-
-# Output: respond with ONLY valid JSON (no markdown fences, no extra text)
-{"topic_category":"...","core_novelty":"one sentence","devil_advocate_concerns":["...","..."],"recommended_angle":"...","discussion_question":"...","scores":{"writability":0,"audience_fit":0,"freshness":0},"verdict":"deep_dive","verdict_reason":"one sentence"}`
+# 输出格式
+直接输出 JSON 数组（不要代码块）：
+[{"id": ID号, "d1": 1-5, "d2": 1-5, "d3": 1-5, "reason": "一句话总结为什么值得/不值得写"}]`
   };
 }
 
@@ -116,10 +121,10 @@ ${materialPack}
 ## 文章结构要求（必须包含以下 5-7 个段落）
 
 1. **事件核心**（300-400字）：直接陈述发生了什么、谁做的、关键数据。不要铺垫，第一句话就是最重要的事实。
-2. **技术/背景解读**（400-500字）：为什么这件事重要？技术原理或行业背景是什么？用类比让非专家也能理解。
-3. **多方观点**（400-500字）：精选 2-3 个有代表性的观点（可以来自 HN 评论、业内人士、原文作者），呈现正反两面。每个观点后要有你的分析。
-4. **影响与判断**（300-400字）：对行业/开发者意味着什么？给出你的明确看法。
-5. **结尾**（50-100字）：一个简短的开放性问题，语气平实。
+2. **技术/背景解读**（400-500字）：为什么这件事重要？技术原理或行业背景是什么？用类比让非专家也能理解。要点明一个大多数报道没有提到的"暗线"或深层逻辑。
+3. **多方观点**（400-500字）：精选 2-3 个有代表性的观点（可以来自 HN 评论、业内人士、原文作者），呈现正反两面。每个观点后要有你的分析，并明确表态你更认同谁。
+4. **洞察与判断**（300-400字）：不要泛泛地说"对行业有影响"。要具体回答：这件事改变了什么游戏规则？读者明天上班需要做什么不同的决策？给出你的明确看法和理由。
+5. **结尾**（50-100字）：一个简短的、具体的开放性问题（不是"你怎么看？"这种泛泛之问），语气平实。
 
 ## 格式要求
 - 每个 section 的 word_target 按上述要求填写
@@ -202,10 +207,12 @@ ${imageInstruction}
 - 如果有图片链接，用 ![描述](url) 插入到合适位置
 
 ## 语气和节奏
-- 像一个懂技术的朋友在跟你聊今天圈子里发生了什么
+- 像一个懂技术的朋友在跟你聊今天圈子里发生了什么——不是在做报告，是在分享
 - 句子长短交错——长句解释原理，短句做判断。偶尔一个3-5字的短句
-- 适当用反问句和设问句增加互动感
-- 加入思考痕迹："说实话""我觉得""有意思的是""但话说回来"
+- 加入思考痕迹和个人判断标记："说实话""我觉得""有意思的是""但话说回来""坦白讲""这里有个细节容易被忽略"
+- 偶尔插入你作为从业者的亲身感受，比如"做过类似项目的人都知道...""如果你用过X，就会理解..."
+- 允许有节奏上的"闲笔"——一句不那么严肃的吐槽或类比，能让文章更像人写的
+- 不要用反问句来制造互动感，用陈述式的判断来代替（"我觉得这比X更值得关注"比"你觉得呢？"好得多）
 
 ## 开头和来源引用
 - **开头直接切入事件本身**，不要写"最近在HN上引发热议"之类的套话
@@ -222,10 +229,13 @@ ${imageInstruction}
 - 同一个用户最多引用一次
 - 文章其他段落不要出现 @用户名，用自然的表述替代（如"有开发者指出..."、"反对者认为..."）
 
-## 内容深度
-- 不要浮于表面，要挖到"so what"——这件事为什么重要？对谁重要？
+## 内容深度与洞察
+- 不要浮于表面，每个核心事实后面都要追问"so what"——这件事为什么重要？对谁重要？会改变什么？
 - 技术原理要用类比让非专家也能懂（比如"就像..."）
-- 给出你自己的明确判断，不要骑墙
+- 给出你自己的明确判断，不要骑墙。好的判断示例："我认为这对中小团队是个坏消息，因为..."
+- 在技术解读段落，点明这件事对读者日常工作的具体影响——他们明天上班需要做什么不同的事？
+- 在观点碰撞段落，不要只罗列正反方，要说清楚你更认同哪一边、为什么
+- 找出事件背后不那么明显的"暗线"——比如商业利益、权力博弈、技术路线之争
 - 不要编造任何不在素材包里的事实或数据
 
 ## 文章末尾（必须包含）
@@ -253,7 +263,12 @@ ${sourcesSection}
 }
 
 // --- BRIEF GENERATION (Qwen, Chinese) ---
-export function briefPrompt(title: string, score: number, comments: number, summary: string, sourceUrl?: string) {
+export function briefPrompt(title: string, score: number, comments: number, summary: string, sourceUrl?: string, hnUrl?: string) {
+  const links = [
+    sourceUrl ? `[阅读原文](${sourceUrl})` : "",
+    hnUrl ? `[讨论](${hnUrl})` : "",
+  ].filter(Boolean).join(" | ");
+
   return {
     system: `你是一位科技媒体编辑，正在写日报快讯栏目。`,
     user: `用 200-250 字写一条科技快讯（严格不超过 250 字，超过视为不合格）。这是公众号日报中的快讯栏目。
@@ -261,7 +276,6 @@ export function briefPrompt(title: string, score: number, comments: number, summ
 素材：
 标题：${title}
 摘要：${summary}
-${sourceUrl ? `原文链接：${sourceUrl}` : ""}
 
 要求：
 - 直接描述事件本身，不要提 Hacker News、热度、评论数等来源信息
@@ -269,7 +283,7 @@ ${sourceUrl ? `原文链接：${sourceUrl}` : ""}
 - 关键信息用 **加粗** 标记
 - 技术术语保留英文
 - 语气客观平实，不加感叹词和夸张表达
-${sourceUrl ? `- 末尾另起一行附链接：[阅读原文](${sourceUrl})` : ""}
+${links ? `- 末尾另起一行附链接：${links}` : ""}
 
 直接输出快讯正文（Markdown 格式）。`
   };
@@ -327,10 +341,11 @@ export function reviewReadabilityPrompt(article: string) {
     user: `请从公众号读者的角度最终优化这篇文章：
 
 1. 开头前两句能否让人想继续读？如果不够抓人，请重写开头（但保持相同长度）
-2. 有没有可以加入互动元素的地方（反问、"你觉得呢？"）
+2. 检查正文中的反问句数量——如果超过1个，必须删减到最多1个（仅保留在结尾）。用陈述式判断替换多余的反问句
 3. 超过5句话的长段落，拆分成2-3个短段落（手机阅读体验）
 4. 关键信息是否用了 **加粗** 标记？如果没有，添加适当的加粗
 5. 结尾是否平实自然？不要煽情夸张的表达
+6. 文章读起来是否像一个真人在写？检查是否有"个人判断"和"思考痕迹"（如"我觉得""说实话"），如果没有，适当添加1-2处
 
 **重要：只能优化表达和格式，不能删除任何内容段落。修改后字数必须 >= 原文字数。**
 

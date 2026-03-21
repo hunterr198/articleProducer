@@ -1,10 +1,11 @@
 import { db } from "@/lib/db";
 import { stories, snapshots, systemLogs } from "@/lib/db/schema";
-import { fetchAllRecentStories } from "./algolia-api";
+import { fetchTopStoryIds, fetchBestStoryIds, fetchStoriesByIds } from "./official-api";
 import type { HNStory } from "./types";
 import { eq, gte } from "drizzle-orm";
 
 const DEDUP_WINDOW_MS = 2 * 60 * 60 * 1000; // 2 hours
+const TOP_STORIES_LIMIT = 100;
 
 interface SampleResult {
   storiesCount: number;
@@ -27,19 +28,26 @@ export async function runSample(): Promise<SampleResult> {
     return { storiesCount: 0, newStories: 0, sampledAt: now };
   }
 
-  // Fetch all recent stories from Algolia
-  let storyList: HNStory[] = [];
-
+  // Fetch from two official sources: Top (hottest) + Best (quality + fresh)
+  let topIds: number[];
+  let bestIds: number[];
   try {
-    storyList = await fetchAllRecentStories();
+    [topIds, bestIds] = await Promise.all([
+      fetchTopStoryIds(),
+      fetchBestStoryIds(),
+    ]);
   } catch (err) {
     await log("error", "sampler", "API fetch failed", { error: String(err) });
     throw err;
   }
 
-  // Filter out job posts and polls
-  storyList = storyList.filter(
-    (s) => s.storyType !== "poll" && s.title !== ""
+  // Top 100 from topstories + all 200 from beststories, deduplicated
+  const mergedIds = [...new Set([...topIds.slice(0, TOP_STORIES_LIMIT), ...bestIds])];
+
+  // Fetch full story details via official API (batched)
+  const fetched = await fetchStoriesByIds(mergedIds);
+  let storyList = fetched.filter(
+    (s): s is HNStory => s !== null && s.storyType !== "poll" && s.title !== ""
   );
 
   // Upsert stories and create snapshots

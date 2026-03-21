@@ -56,9 +56,9 @@ export async function generateArticle(
 }
 
 export async function generateBrief(
-  title: string, score: number, comments: number, summary: string, sourceUrl?: string
+  title: string, score: number, comments: number, summary: string, sourceUrl?: string, hnUrl?: string
 ): Promise<string> {
-  const prompt = briefPrompt(title, score, comments, summary, sourceUrl);
+  const prompt = briefPrompt(title, score, comments, summary, sourceUrl, hnUrl);
   return withRetry(() => qwenChat(prompt.system, prompt.user));
 }
 

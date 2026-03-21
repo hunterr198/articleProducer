@@ -8,6 +8,12 @@ export async function fetchTopStoryIds(): Promise<number[]> {
   return res.json();
 }
 
+export async function fetchBestStoryIds(): Promise<number[]> {
+  const res = await fetch(`${BASE_URL}/beststories.json`);
+  if (!res.ok) throw new Error(`HN API error: ${res.status}`);
+  return res.json();
+}
+
 interface HNItem {
   id: number;
   type: string;

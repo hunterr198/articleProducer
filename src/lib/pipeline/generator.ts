@@ -194,12 +194,14 @@ async function generateClusterBrief(dailyScoreId: number): Promise<number> {
     const briefTitle = clusterLabel || primaryStory.title;
     const summary = await generateBriefSummary(briefTitle, primaryStory.url ?? undefined);
 
+    const hnUrl = `https://news.ycombinator.com/item?id=${primaryStory.id}`;
     const draft = await qwenGenerateBrief(
       briefTitle,
       primaryStory.score ?? 0,
       primaryStory.commentsCount ?? 0,
       summary,
-      primaryStory.url ?? undefined
+      primaryStory.url ?? undefined,
+      hnUrl
     );
 
     const reviewed = await reviewArticle(draft, "", "brief");
