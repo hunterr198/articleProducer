@@ -44,7 +44,7 @@ export async function evaluateWritabilityBatch(
         Authorization: `Bearer ${process.env.DASHSCOPE_API_KEY}`,
       },
       body: JSON.stringify({
-        model: "qwen3.5-plus",
+        model: "qwen3.5-plus-2026-02-15",
         messages: [
           { role: "system", content: prompt.system },
           { role: "user", content: prompt.user },

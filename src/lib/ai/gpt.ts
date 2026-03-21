@@ -16,7 +16,7 @@ const qwen = new OpenAI({
   baseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1",
 });
 
-const MODEL = "qwen3.5-plus";
+const MODEL = "qwen3.5-plus-2026-02-15";
 
 async function chatJSON<T>(system: string, user: string): Promise<T> {
   const body: Record<string, unknown> = {

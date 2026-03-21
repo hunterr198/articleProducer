@@ -323,7 +323,7 @@ ${titleList}
         Authorization: `Bearer ${process.env.DASHSCOPE_API_KEY}`,
       },
       body: JSON.stringify({
-        model: "qwen3.5-plus",
+        model: "qwen3.5-plus-2026-02-15",
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },
