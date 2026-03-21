@@ -5,7 +5,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LAUNCH_AGENTS_DIR="$HOME/Library/LaunchAgents"
 PLISTS=(
   "com.articleproducer.sample.plist"
-  "com.articleproducer.score.plist"
   "com.articleproducer.aggregate.plist"
 )
 
