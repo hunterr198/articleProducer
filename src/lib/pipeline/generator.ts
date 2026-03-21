@@ -198,7 +198,8 @@ async function generateClusterBrief(dailyScoreId: number): Promise<number> {
       briefTitle,
       primaryStory.score ?? 0,
       primaryStory.commentsCount ?? 0,
-      summary
+      summary,
+      primaryStory.url ?? undefined
     );
 
     const reviewed = await reviewArticle(draft, "", "brief");

@@ -123,7 +123,7 @@ export async function runDailyAggregation(dateStr: string): Promise<{
   let deepCount = 0;
   let briefCount = 0;
   const MAX_DEEP = 3;
-  const MAX_BRIEF = 8;
+  const MAX_BRIEF = 3;
 
   for (const scored of allScored) {
     if (deepCount < MAX_DEEP) {
