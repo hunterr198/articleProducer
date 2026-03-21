@@ -1,16 +1,15 @@
 /**
- * AI 分析模块（素材分析、大纲生成、可写性评估）
+ * AI 分析模块（素材分析、大纲生成）
  * 使用 Qwen（DashScope）
  */
 import OpenAI from "openai";
 import { withRetry } from "./retry";
 import {
-  writabilityPrompt,
   materialAnalysisPrompt,
   outlinePrompt,
   briefSummaryPrompt,
 } from "./prompts";
-import type { WritabilityEvaluation, MaterialPack, ArticleOutline } from "./types";
+import type { MaterialPack, ArticleOutline } from "./types";
 
 const qwen = new OpenAI({
   apiKey: process.env.DASHSCOPE_API_KEY,
@@ -47,14 +46,6 @@ async function chat(system: string, user: string): Promise<string> {
   };
   const res = await (qwen.chat.completions.create as Function)(body);
   return res.choices[0]?.message?.content ?? "";
-}
-
-export async function evaluateWritability(
-  story: { title: string; url?: string; score: number; commentsCount: number; time: string },
-  topComments: string
-): Promise<WritabilityEvaluation> {
-  const prompt = writabilityPrompt({ ...story, topComments });
-  return withRetry(() => chatJSON<WritabilityEvaluation>(prompt.system, prompt.user));
 }
 
 export async function analyzeMaterials(materials: {
