@@ -1,3 +1,7 @@
+/**
+ * 原来用 OpenAI GPT，现在切换为 Qwen（DashScope）
+ * 保持接口不变，调用方无需修改
+ */
 import OpenAI from "openai";
 import { withRetry } from "./retry";
 import {
@@ -8,31 +12,40 @@ import {
 } from "./prompts";
 import type { WritabilityEvaluation, MaterialPack, ArticleOutline } from "./types";
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const qwen = new OpenAI({
+  apiKey: process.env.DASHSCOPE_API_KEY,
+  baseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+});
+
+const MODEL = "qwen3.5-plus";
 
 async function chatJSON<T>(system: string, user: string): Promise<T> {
-  const res = await openai.chat.completions.create({
-    model: "gpt-4o",
+  const body: Record<string, unknown> = {
+    model: MODEL,
     messages: [
       { role: "system", content: system },
       { role: "user", content: user },
     ],
     temperature: 0.3,
+    enable_thinking: false,
     response_format: { type: "json_object" },
-  });
+  };
+  const res = await (qwen.chat.completions.create as Function)(body);
   const text = res.choices[0]?.message?.content ?? "{}";
   return JSON.parse(text) as T;
 }
 
 async function chat(system: string, user: string): Promise<string> {
-  const res = await openai.chat.completions.create({
-    model: "gpt-4o",
+  const body: Record<string, unknown> = {
+    model: MODEL,
     messages: [
       { role: "system", content: system },
       { role: "user", content: user },
     ],
     temperature: 0.3,
-  });
+    enable_thinking: false,
+  };
+  const res = await (qwen.chat.completions.create as Function)(body);
   return res.choices[0]?.message?.content ?? "";
 }
 
