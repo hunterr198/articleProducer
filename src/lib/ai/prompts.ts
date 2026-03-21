@@ -1,4 +1,4 @@
-// --- WRITABILITY EVALUATION (GPT, English) ---
+// --- WRITABILITY EVALUATION ---
 export function writabilityPrompt(story: {
   title: string; url?: string; score: number;
   commentsCount: number; time: string; topComments: string;
@@ -53,7 +53,7 @@ Would Chinese tech professionals (25-40, engineers/PMs/AI practitioners) care? W
   };
 }
 
-// --- MATERIAL ANALYSIS (GPT, English) ---
+// --- MATERIAL ANALYSIS ---
 export function materialAnalysisPrompt(materials: {
   originalContent: string;
   hnComments: string;
@@ -103,7 +103,7 @@ Output ONLY valid JSON (no markdown fences):
   };
 }
 
-// --- OUTLINE GENERATION (GPT, Chinese output) ---
+// --- OUTLINE GENERATION ---
 export function outlinePrompt(materialPack: string) {
   return {
     system: `你是一位资深科技内容策划，正在为一个面向中国技术从业者和AI爱好者的公众号策划深度解读文章。你的文章风格介于「新智元」的叙事感和「机器之心」的专业度之间。`,
@@ -341,7 +341,7 @@ ${article}
   };
 }
 
-// --- BRIEF SUMMARY FOR SCORING (GPT) ---
+// --- BRIEF SUMMARY FOR SCORING ---
 export function briefSummaryPrompt(title: string, url: string | undefined) {
   return {
     system: `Summarize this HN story in 2-3 sentences for a Chinese tech editor to understand what it's about.`,

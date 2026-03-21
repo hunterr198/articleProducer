@@ -1,6 +1,6 @@
 /**
- * 原来用 OpenAI GPT，现在切换为 Qwen（DashScope）
- * 保持接口不变，调用方无需修改
+ * AI 分析模块（素材分析、大纲生成、可写性评估）
+ * 使用 Qwen（DashScope）
  */
 import OpenAI from "openai";
 import { withRetry } from "./retry";
