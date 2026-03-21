@@ -87,13 +87,9 @@ export default function ArticlesPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <a
-            href={`/api/articles/digest?date=${todayStr}`}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
+          <Link href="/digest">
             <Button variant="outline">查看今日日报</Button>
-          </a>
+          </Link>
           <Link href="/topics">
             <Button variant="outline">返回选题</Button>
           </Link>

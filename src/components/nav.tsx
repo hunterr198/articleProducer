@@ -7,6 +7,7 @@ const links = [
   { href: "/", label: "Dashboard" },
   { href: "/topics", label: "选题" },
   { href: "/articles", label: "文章" },
+  { href: "/digest", label: "日报" },
 ];
 
 export function Nav() {
