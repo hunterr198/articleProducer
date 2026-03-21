@@ -29,11 +29,30 @@ interface WritabilityInput {
  * Final = (d1*0.25 + d2*0.20 + d3*0.20) / 0.65 * 20
  * Simplified: maps the weighted 1-5 range to 0-100
  */
+const BATCH_SIZE = 20; // 每批最多 20 个话题，避免 token 超限
+
 export async function evaluateWritabilityBatch(
   stories: WritabilityInput[]
 ): Promise<Map<number, number>> {
   if (stories.length === 0) return new Map();
 
+  const scoreMap = new Map<number, number>();
+
+  // 分批处理
+  for (let i = 0; i < stories.length; i += BATCH_SIZE) {
+    const batch = stories.slice(i, i + BATCH_SIZE);
+    const batchScores = await evaluateSingleBatch(batch);
+    for (const [id, score] of batchScores) {
+      scoreMap.set(id, score);
+    }
+  }
+
+  return scoreMap;
+}
+
+async function evaluateSingleBatch(
+  stories: WritabilityInput[]
+): Promise<Map<number, number>> {
   const prompt = writabilityPrompt(stories);
 
   try {
@@ -70,8 +89,6 @@ export async function evaluateWritabilityBatch(
       const d1 = clamp(r.d1 ?? 3, 1, 5);
       const d2 = clamp(r.d2 ?? 3, 1, 5);
       const d3 = clamp(r.d3 ?? 3, 1, 5);
-      // Weighted average of dimensions, scaled to 0-100
-      // d1 (depth) weighs most at ~38%, d2 (audience) ~31%, d3 (controversy) ~31%
       const weighted = d1 * 0.38 + d2 * 0.31 + d3 * 0.31;
       const score100 = Math.round((weighted - 1) / 4 * 100);
       scoreMap.set(r.id, score100);
@@ -79,8 +96,7 @@ export async function evaluateWritabilityBatch(
 
     return scoreMap;
   } catch (err) {
-    console.error("Writability evaluation failed:", err);
-    // Default all to 50 on failure
+    console.error("Writability evaluation failed for batch:", err);
     const fallback = new Map<number, number>();
     for (const s of stories) fallback.set(s.id, 50);
     return fallback;
