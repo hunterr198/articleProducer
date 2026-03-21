@@ -15,10 +15,10 @@ export async function markdownToWechat(markdown: string): Promise<string> {
       /<h1([^>]*)>/g,
       '<h1$1 style="font-size:24px;font-weight:bold;margin:24px 0 12px;color:#1a1a1a;line-height:1.4;">'
     )
-    // h2
+    // h2 — 左侧彩色边框
     .replace(
       /<h2([^>]*)>/g,
-      '<h2$1 style="font-size:20px;font-weight:bold;margin:20px 0 10px;color:#1a1a1a;line-height:1.4;">'
+      '<h2$1 style="font-size:20px;font-weight:bold;margin:24px 0 12px;padding-left:12px;border-left:4px solid #07c160;color:#1a1a1a;line-height:1.4;">'
     )
     // h3
     .replace(
@@ -40,10 +40,10 @@ export async function markdownToWechat(markdown: string): Promise<string> {
       /<a([^>]*)>/g,
       '<a$1 style="color:#576b95;text-decoration:none;">'
     )
-    // blockquote
+    // blockquote — 卡片式样式，适合快讯
     .replace(
       /<blockquote([^>]*)>/g,
-      '<blockquote$1 style="border-left:4px solid #576b95;background:#f9f9f9;margin:12px 0;padding:10px 16px;color:#555555;">'
+      '<blockquote$1 style="border-left:4px solid #07c160;background:#f6faf7;border-radius:6px;margin:16px 0;padding:12px 16px;color:#444444;font-size:15px;line-height:1.8;">'
     )
     // code (inline) — must come before pre>code
     .replace(
@@ -70,10 +70,10 @@ export async function markdownToWechat(markdown: string): Promise<string> {
       /<li([^>]*)>/g,
       '<li$1 style="font-size:15px;line-height:1.8;margin-bottom:4px;color:#333333;">'
     )
-    // hr
+    // hr — 居中短线，增加呼吸感
     .replace(
       /<hr([^>]*)\/?>/g,
-      '<hr$1 style="border:none;border-top:1px solid #e5e5e5;margin:20px 0;">'
+      '<hr$1 style="border:none;height:1px;background:linear-gradient(to right, rgba(0,0,0,0), #ddd, rgba(0,0,0,0));margin:28px auto;width:60%;">'
     )
     // img
     .replace(
