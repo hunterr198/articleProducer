@@ -15,6 +15,27 @@ export default function DigestPage() {
   const [dateStr, setDateStr] = useState("");
   const [selectedDate, setSelectedDate] = useState(todayBeijing());
   const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [generating, setGenerating] = useState(false);
+  const [genError, setGenError] = useState("");
+
+  async function handleRegenerate() {
+    setGenerating(true);
+    setGenError("");
+    try {
+      const res = await fetch(`/api/cron/aggregate`, { signal: AbortSignal.timeout(1800000) });
+      const data = await res.json();
+      if (!data.success) {
+        setGenError(data.error ?? "生成失败");
+      } else {
+        // 重新加载日报内容
+        loadDigest(selectedDate, false);
+      }
+    } catch (err) {
+      setGenError(String(err));
+    } finally {
+      setGenerating(false);
+    }
+  }
 
   const loadDigest = useCallback(async (date: string, fallbackToYesterday: boolean) => {
     setLoading(true);
@@ -128,6 +149,20 @@ export default function DigestPage() {
           </div>
         )}
       </div>
+
+      {/* 生成/重试按钮 */}
+      {selectedDate === todayBeijing() && (
+        <div className="flex items-center gap-3">
+          <Button
+            variant={hasContent ? "outline" : "default"}
+            onClick={handleRegenerate}
+            disabled={generating}
+          >
+            {generating ? "生成中...（可能需要几分钟）" : hasContent ? "重新生成今日日报" : "立即生成今日日报"}
+          </Button>
+          {genError && <span className="text-sm text-red-500">{genError}</span>}
+        </div>
+      )}
 
       {!hasContent ? (
         <div className="text-center text-muted-foreground py-16">
