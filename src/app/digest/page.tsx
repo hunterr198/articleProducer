@@ -70,22 +70,40 @@ export default function DigestPage() {
     } catch {}
   }
 
+  const datePicker = (
+    <div className="flex items-center gap-2">
+      <Button variant="outline" size="sm" onClick={() => changeDate(-1)}>
+        &larr; 前一天
+      </Button>
+      <input
+        type="date"
+        value={selectedDate}
+        max={todayBeijing()}
+        onChange={(e) => setSelectedDate(e.target.value)}
+        className="border rounded px-2 py-1 text-sm"
+      />
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => changeDate(1)}
+        disabled={selectedDate >= todayBeijing()}
+      >
+        后一天 &rarr;
+      </Button>
+    </div>
+  );
+
   if (loading) {
     return (
-      <div className="max-w-4xl mx-auto p-6 text-center text-muted-foreground">
-        加载日报中...
+      <div className="max-w-4xl mx-auto p-6 space-y-4">
+        <h1 className="text-2xl font-bold">日报预览</h1>
+        {datePicker}
+        <p className="text-center text-muted-foreground mt-8">加载日报中...</p>
       </div>
     );
   }
 
-  if (!markdown || markdown.length < 200) {
-    return (
-      <div className="max-w-4xl mx-auto p-6 text-center text-muted-foreground">
-        <p>暂无日报内容</p>
-        <p className="text-sm mt-2">请先运行聚合和文章生成</p>
-      </div>
-    );
-  }
+  const hasContent = markdown && markdown.length >= 200;
 
   return (
     <div className="max-w-4xl mx-auto p-6 space-y-4">
@@ -93,51 +111,42 @@ export default function DigestPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">日报预览</h1>
-          <div className="flex items-center gap-2 mt-1">
-            <Button variant="outline" size="sm" onClick={() => changeDate(-1)}>
-              &larr; 前一天
+          <div className="mt-1">{datePicker}</div>
+        </div>
+        {hasContent && (
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={handleCopyMarkdown}>
+              {copied ? "已复制" : "复制 Markdown"}
             </Button>
-            <input
-              type="date"
-              value={selectedDate}
-              max={todayBeijing()}
-              onChange={(e) => setSelectedDate(e.target.value)}
-              className="border rounded px-2 py-1 text-sm"
-            />
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => changeDate(1)}
-              disabled={selectedDate >= todayBeijing()}
-            >
-              后一天 &rarr;
+            <Button onClick={handleCopyHTML}>
+              {copied ? "已复制" : "复制公众号 HTML"}
             </Button>
           </div>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={handleCopyMarkdown}>
-            {copied ? "已复制" : "复制 Markdown"}
-          </Button>
-          <Button onClick={handleCopyHTML}>
-            {copied ? "已复制" : "复制公众号 HTML"}
-          </Button>
-        </div>
+        )}
       </div>
 
-      {/* Rendered Preview */}
-      <div className="border rounded-lg p-8 bg-white shadow-sm">
-        <MarkdownPreview content={markdown} />
-      </div>
+      {!hasContent ? (
+        <div className="text-center text-muted-foreground py-16">
+          <p>{selectedDate} 暂无日报内容</p>
+        </div>
+      ) : (
+        <>
+          {/* Rendered Preview */}
+          <div className="border rounded-lg p-8 bg-white shadow-sm">
+            <MarkdownPreview content={markdown} />
+          </div>
 
-      {/* HTML Preview (collapsible) */}
-      <details className="border rounded-lg p-4">
-        <summary className="cursor-pointer text-sm text-muted-foreground font-medium">
-          查看原始 HTML（用于粘贴到公众号编辑器）
-        </summary>
-        <pre className="mt-4 p-4 bg-gray-50 rounded text-xs overflow-auto max-h-96">
-          {html}
-        </pre>
-      </details>
+          {/* HTML Preview (collapsible) */}
+          <details className="border rounded-lg p-4">
+            <summary className="cursor-pointer text-sm text-muted-foreground font-medium">
+              查看原始 HTML（用于粘贴到公众号编辑器）
+            </summary>
+            <pre className="mt-4 p-4 bg-gray-50 rounded text-xs overflow-auto max-h-96">
+              {html}
+            </pre>
+          </details>
+        </>
+      )}
     </div>
   );
 }
