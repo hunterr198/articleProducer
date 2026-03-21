@@ -14,14 +14,15 @@ export default function DigestPage() {
   const [copied, setCopied] = useState(false);
   const [dateStr, setDateStr] = useState("");
   const [selectedDate, setSelectedDate] = useState(todayBeijing());
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
 
-  const loadDigest = useCallback(async (date: string) => {
+  const loadDigest = useCallback(async (date: string, fallbackToYesterday: boolean) => {
     setLoading(true);
     let res = await fetch(`/api/articles/digest?date=${date}`);
     let data = await res.json();
 
-    // If selected date is today and empty, try yesterday
-    if ((!data.markdown || data.markdown.length < 200) && date === todayBeijing()) {
+    // Only fall back to yesterday on initial page load, not on manual date selection
+    if (fallbackToYesterday && (!data.markdown || data.markdown.length < 200)) {
       const yesterday = new Date();
       yesterday.setDate(yesterday.getDate() - 1);
       const yesterdayStr = new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Shanghai" }).format(yesterday);
@@ -36,7 +37,10 @@ export default function DigestPage() {
     setLoading(false);
   }, []);
 
-  useEffect(() => { loadDigest(selectedDate); }, [selectedDate, loadDigest]);
+  useEffect(() => {
+    loadDigest(selectedDate, isInitialLoad);
+    if (isInitialLoad) setIsInitialLoad(false);
+  }, [selectedDate, loadDigest, isInitialLoad]);
 
   function changeDate(offset: number) {
     const d = new Date(selectedDate + "T12:00:00");
