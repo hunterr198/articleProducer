@@ -1,7 +1,11 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { MarkdownPreview } from "@/components/markdown-preview";
+
+function todayBeijing() {
+  return new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Shanghai" }).format(new Date());
+}
 
 export default function DigestPage() {
   const [markdown, setMarkdown] = useState("");
@@ -9,37 +13,36 @@ export default function DigestPage() {
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
   const [dateStr, setDateStr] = useState("");
+  const [selectedDate, setSelectedDate] = useState(todayBeijing());
 
-  // Try today first, then yesterday
-  useEffect(() => {
-    async function loadDigest() {
-      const today = new Intl.DateTimeFormat("sv-SE", {
-        timeZone: "Asia/Shanghai",
-      }).format(new Date());
+  const loadDigest = useCallback(async (date: string) => {
+    setLoading(true);
+    let res = await fetch(`/api/articles/digest?date=${date}`);
+    let data = await res.json();
 
-      // Try today
-      let res = await fetch(`/api/articles/digest?date=${today}`);
-      let data = await res.json();
-
-      if (!data.markdown || data.markdown.length < 200) {
-        // Try yesterday
-        const yesterday = new Date();
-        yesterday.setDate(yesterday.getDate() - 1);
-        const yesterdayStr = new Intl.DateTimeFormat("sv-SE", {
-          timeZone: "Asia/Shanghai",
-        }).format(yesterday);
-
-        res = await fetch(`/api/articles/digest?date=${yesterdayStr}`);
-        data = await res.json();
-      }
-
-      setMarkdown(data.markdown ?? "");
-      setHtml(data.html ?? "");
-      setDateStr(data.date ?? "");
-      setLoading(false);
+    // If selected date is today and empty, try yesterday
+    if ((!data.markdown || data.markdown.length < 200) && date === todayBeijing()) {
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayStr = new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Shanghai" }).format(yesterday);
+      res = await fetch(`/api/articles/digest?date=${yesterdayStr}`);
+      data = await res.json();
+      setSelectedDate(yesterdayStr);
     }
-    loadDigest();
+
+    setMarkdown(data.markdown ?? "");
+    setHtml(data.html ?? "");
+    setDateStr(data.date ?? "");
+    setLoading(false);
   }, []);
+
+  useEffect(() => { loadDigest(selectedDate); }, [selectedDate, loadDigest]);
+
+  function changeDate(offset: number) {
+    const d = new Date(selectedDate + "T12:00:00");
+    d.setDate(d.getDate() + offset);
+    setSelectedDate(d.toISOString().slice(0, 10));
+  }
 
   async function handleCopyHTML() {
     try {
@@ -90,7 +93,26 @@ export default function DigestPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">日报预览</h1>
-          <p className="text-sm text-muted-foreground">{dateStr}</p>
+          <div className="flex items-center gap-2 mt-1">
+            <Button variant="outline" size="sm" onClick={() => changeDate(-1)}>
+              &larr; 前一天
+            </Button>
+            <input
+              type="date"
+              value={selectedDate}
+              max={todayBeijing()}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              className="border rounded px-2 py-1 text-sm"
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => changeDate(1)}
+              disabled={selectedDate >= todayBeijing()}
+            >
+              后一天 &rarr;
+            </Button>
+          </div>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={handleCopyMarkdown}>
