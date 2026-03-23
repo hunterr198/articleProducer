@@ -1,19 +1,21 @@
 import { db } from "@/lib/db";
-import { articles } from "@/lib/db/schema";
-import { and, gte } from "drizzle-orm";
+import { articles, dailyScores } from "@/lib/db/schema";
+import { eq, and } from "drizzle-orm";
 
 export async function assembleDailyDigest(dateStr: string): Promise<string> {
-  const dayStart = new Date(`${dateStr}T00:00:00+08:00`);
-  const dayEnd = new Date(`${dateStr}T23:59:59+08:00`);
-
-  const allArticles = await db
-    .select()
+  // 按 dailyScores.date 筛选，而非 articles.createdAt（重新生成时 createdAt 会变）
+  const todayArticles = await db
+    .select({ article: articles })
     .from(articles)
-    .where(gte(articles.createdAt, dayStart));
-
-  const todayArticles = allArticles.filter(
-    (a) => a.createdAt <= dayEnd && a.status !== "failed" && a.status !== "generating"
-  );
+    .innerJoin(dailyScores, eq(articles.dailyScoreId, dailyScores.id))
+    .where(and(
+      eq(dailyScores.date, dateStr),
+    ))
+    .then((rows) =>
+      rows
+        .map((r) => r.article)
+        .filter((a) => a.status !== "failed" && a.status !== "generating")
+    );
 
   const deepDives = todayArticles.filter((a) => a.type === "deep_dive");
   const briefs = todayArticles.filter((a) => a.type === "brief");
