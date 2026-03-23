@@ -3,7 +3,8 @@
  *
  * 用法：npx tsx scripts/regen-date.ts 2026-03-22
  */
-import "dotenv/config";
+import { config } from "dotenv";
+config({ path: ".env.local" });
 import { db } from "../src/lib/db";
 import { articles, dailyScores } from "../src/lib/db/schema";
 import { eq, and, inArray } from "drizzle-orm";

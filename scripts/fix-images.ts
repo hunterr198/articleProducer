@@ -4,7 +4,8 @@
  * 用法（在服务器上）：
  *   npx tsx scripts/fix-images.ts
  */
-import "dotenv/config";
+import { config } from "dotenv";
+config({ path: ".env.local" });
 import { db } from "../src/lib/db";
 import { articles } from "../src/lib/db/schema";
 import { downloadImages } from "../src/lib/research/image-downloader";
