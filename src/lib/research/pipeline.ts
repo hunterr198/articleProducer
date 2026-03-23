@@ -6,6 +6,7 @@ import { searchWeb } from "./search";
 import { fetchStoryWithComments } from "@/lib/hn/algolia-api";
 import { analyzeMaterials } from "@/lib/ai/gpt";
 import { searchImages } from "@/lib/ai/qwen";
+import { downloadImages } from "./image-downloader";
 import type { MaterialPack } from "@/lib/ai/types";
 
 export interface ResearchResult {
@@ -46,6 +47,9 @@ export async function runResearch(story: {
   if (images.length === 0) {
     images = await searchImages(story.title);
   }
+
+  // 下载图片到本地，用本站 URL 替代外链
+  images = await downloadImages(images, story.id);
 
   // Format comments for GPT
   const hnCommentsText = commentsData
@@ -166,6 +170,9 @@ export async function runClusterResearch(cluster: {
   if (images.length === 0) {
     images = await searchImages(cluster.label);
   }
+
+  // 下载图片到本地，用本站 URL 替代外链
+  images = await downloadImages(images, cluster.primaryStoryId);
 
   // Format comments for GPT
   const hnCommentsText = mergedComments
