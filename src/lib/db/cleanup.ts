@@ -1,6 +1,10 @@
 import { db } from "@/lib/db";
-import { snapshots, research, stories, dailyScores, topicClusters } from "@/lib/db/schema";
+import { articles, snapshots, research, stories, dailyScores, topicClusters } from "@/lib/db/schema";
 import { lt, sql } from "drizzle-orm";
+import { join } from "path";
+import { readdir, rm } from "fs/promises";
+
+const IMAGE_DIR = join(process.cwd(), "data", "images");
 
 export async function runCleanup(): Promise<{
   deletedSnapshots: number;
@@ -8,6 +12,8 @@ export async function runCleanup(): Promise<{
   deletedStories: number;
   deletedScores: number;
   deletedClusters: number;
+  deletedArticles: number;
+  deletedImageDirs: number;
   vacuumed: boolean;
 }> {
   const now = new Date();
@@ -42,6 +48,14 @@ export async function runCleanup(): Promise<{
     DELETE FROM topic_clusters WHERE created_at < ${sevenDaysAgo.getTime() / 1000}
   `);
 
+  // Articles: delete after 30 days
+  const articleResult = await db
+    .delete(articles)
+    .where(lt(articles.createdAt, thirtyDaysAgo));
+
+  // Images: delete directories whose storyId has no remaining articles
+  const deletedImageDirs = await cleanupOrphanedImages();
+
   // VACUUM to reclaim disk space after bulk deletes
   await db.run(sql`VACUUM`);
 
@@ -51,6 +65,36 @@ export async function runCleanup(): Promise<{
     deletedStories: (storyResult as { changes?: number }).changes ?? 0,
     deletedScores: scoreResult.changes ?? 0,
     deletedClusters: (clusterResult as { changes?: number }).changes ?? 0,
+    deletedArticles: articleResult.changes ?? 0,
+    deletedImageDirs,
     vacuumed: true,
   };
+}
+
+/**
+ * 删除没有对应文章的图片目录。
+ * 图片目录以 storyId 命名，如果该 storyId 在 articles 表中已无记录则删除。
+ */
+async function cleanupOrphanedImages(): Promise<number> {
+  let dirs: string[];
+  try {
+    dirs = await readdir(IMAGE_DIR);
+  } catch {
+    return 0; // data/images 不存在则跳过
+  }
+
+  // 获取所有还有文章的 storyId
+  const activeStoryIds = new Set(
+    (await db.select({ storyId: articles.storyId }).from(articles))
+      .map((r) => String(r.storyId))
+  );
+
+  let deleted = 0;
+  for (const dir of dirs) {
+    if (!activeStoryIds.has(dir)) {
+      await rm(join(IMAGE_DIR, dir), { recursive: true, force: true });
+      deleted++;
+    }
+  }
+  return deleted;
 }
