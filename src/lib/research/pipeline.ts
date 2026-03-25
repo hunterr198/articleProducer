@@ -9,10 +9,12 @@ import { searchRelatedArticles } from "@/lib/ai/qwen";
 import { downloadImages } from "./image-downloader";
 import type { MaterialPack } from "@/lib/ai/types";
 
+import type { ImageInfo } from "./scraper";
+
 export interface ResearchResult {
   storyId: number;
   originalContent: string;
-  images: string[];
+  images: ImageInfo[];
   hnComments: { author: string; text: string }[];
   webSearchResults: { title: string; snippet: string; url: string }[];
   materialPack: MaterialPack;
@@ -164,12 +166,18 @@ export async function runClusterResearch(cluster: {
     }
   }
 
-  // Collect and merge all images from all sources, pick best 5
-  const allImages: string[] = [];
+  // Collect and merge all images from all sources
+  const allImages: ImageInfo[] = [];
+  const seenUrls = new Set<string>();
   for (const result of scrapeResults) {
-    allImages.push(...result.images);
+    for (const img of result.images) {
+      if (!seenUrls.has(img.url)) {
+        seenUrls.add(img.url);
+        allImages.push(img);
+      }
+    }
   }
-  let images = Array.from(new Set(allImages));
+  let images = allImages;
 
   // 5. If no images found from scraping, search related articles and scrape their images
   if (images.length === 0) {

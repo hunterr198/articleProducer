@@ -48,7 +48,7 @@ export async function generateArticle(
   materialPack: string,
   meta: {
     sources: Array<{ title: string; url: string; hnUrl: string; score: number }>;
-    images: string[];
+    images: Array<{ url: string; alt: string }>;
   } = { sources: [], images: [] }
 ): Promise<string> {
   const prompt = articlePrompt(outline, materialPack, meta);

@@ -1,8 +1,13 @@
 import * as cheerio from "cheerio";
 
+export interface ImageInfo {
+  url: string;
+  alt: string; // alt 属性或 figcaption 文字
+}
+
 export interface ScrapeResult {
   content: string;
-  images: string[]; // 提取的图片 URL 列表
+  images: ImageInfo[];
 }
 
 export async function scrapeUrl(url: string): Promise<ScrapeResult> {
@@ -37,8 +42,8 @@ function extractContent(html: string, url: string): ScrapeResult {
     "script, style, nav, footer, header, aside, .sidebar, .ads, .comments, .nav, .menu, .footer"
   ).remove();
 
-  // Extract images (before removing elements, from the main content area)
-  const images: string[] = [];
+  // Extract images with descriptions (alt + figcaption)
+  const images: ImageInfo[] = [];
   const seenUrls = new Set<string>();
 
   $("article img, main img, .post-content img, .entry-content img, .article-body img, img").each((_, el) => {
@@ -78,8 +83,14 @@ function extractContent(html: string, url: string): ScrapeResult {
       absoluteUrl = new URL(src, url).href;
     } catch { /* keep original */ }
 
+    // 提取描述信息：alt 属性 + figcaption + title
+    const alt = $(el).attr("alt") || "";
+    const title = $(el).attr("title") || "";
+    const figcaption = $(el).closest("figure").find("figcaption").text().trim();
+    const desc = figcaption || alt || title || "";
+
     seenUrls.add(src);
-    images.push(absoluteUrl);
+    images.push({ url: absoluteUrl, alt: desc });
   });
 
   // Special: arXiv
@@ -143,14 +154,15 @@ async function scrapeWithJinaReader(url: string): Promise<ScrapeResult> {
     if (!res.ok) return { content: "", images: [] };
     const markdown = await res.text();
 
-    // 从 Markdown 中提取图片 URL: ![alt](url)
-    const images: string[] = [];
-    const imgRegex = /!\[[^\]]*\]\(([^)]+)\)/g;
+    // 从 Markdown 中提取图片 URL 和 alt 描述: ![alt](url)
+    const images: ImageInfo[] = [];
+    const imgRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
     let match;
     while ((match = imgRegex.exec(markdown)) !== null) {
-      const imgUrl = match[1];
+      const imgAlt = match[1];
+      const imgUrl = match[2];
       if (imgUrl.startsWith("http") && !imgUrl.endsWith(".svg")) {
-        images.push(imgUrl);
+        images.push({ url: imgUrl, alt: imgAlt });
       }
     }
 

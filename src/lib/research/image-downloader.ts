@@ -2,6 +2,7 @@ import { createHash } from "crypto";
 import { join } from "path";
 import { mkdir, writeFile } from "fs/promises";
 import { existsSync } from "fs";
+import type { ImageInfo } from "./scraper";
 
 const IMAGE_DIR = join(process.cwd(), "data", "images");
 
@@ -26,34 +27,34 @@ function getExtension(contentType: string, url: string): string | null {
 }
 
 /**
- * Download remote images to data/images/{storyId}/ and return local API URLs.
+ * Download remote images to data/images/{storyId}/ and return local ImageInfo.
  * Skips images that fail to download or are too small (<1 KB).
  */
 export async function downloadImages(
-  urls: string[],
+  images: ImageInfo[],
   storyId: number
-): Promise<string[]> {
-  if (urls.length === 0) return [];
+): Promise<ImageInfo[]> {
+  if (images.length === 0) return [];
 
   const dir = join(IMAGE_DIR, String(storyId));
   await mkdir(dir, { recursive: true });
 
   const results = await Promise.allSettled(
-    urls.map((url) => downloadOne(url, dir, storyId))
+    images.map((img) => downloadOne(img, dir, storyId))
   );
 
   return results
-    .filter((r): r is PromiseFulfilledResult<string | null> => r.status === "fulfilled")
+    .filter((r): r is PromiseFulfilledResult<ImageInfo | null> => r.status === "fulfilled")
     .map((r) => r.value)
-    .filter((v): v is string => v !== null);
+    .filter((v): v is ImageInfo => v !== null);
 }
 
 async function downloadOne(
-  url: string,
+  img: ImageInfo,
   dir: string,
   storyId: number
-): Promise<string | null> {
-  const res = await fetch(url, {
+): Promise<ImageInfo | null> {
+  const res = await fetch(img.url, {
     signal: AbortSignal.timeout(15000),
     headers: { "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36" },
     redirect: "follow",
@@ -62,7 +63,7 @@ async function downloadOne(
   if (!res.ok) return null;
 
   const contentType = res.headers.get("content-type") || "";
-  const ext = getExtension(contentType, url);
+  const ext = getExtension(contentType, img.url);
   if (!ext) return null;
 
   const buffer = Buffer.from(await res.arrayBuffer());
@@ -76,5 +77,5 @@ async function downloadOne(
     await writeFile(filepath, buffer);
   }
 
-  return `/api/images/${storyId}/${filename}`;
+  return { url: `/api/images/${storyId}/${filename}`, alt: img.alt };
 }

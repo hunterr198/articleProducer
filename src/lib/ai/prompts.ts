@@ -142,16 +142,19 @@ export function articlePrompt(
   materialPack: string,
   meta: {
     sources: Array<{ title: string; url: string; hnUrl: string; score: number }>;
-    images: string[];
+    images: Array<{ url: string; alt: string }>;
   }
 ) {
   const imageInstruction = meta.images.length > 0
     ? `\n## 插图
-以下是与话题相关的图片链接，请在文章合适的位置插入（Markdown 格式）：
-${meta.images.map((url, i) => `- 图${i + 1}: ${url}`).join("\n")}
-- 第一张图建议放在开头段落之后，作为题图
-- 其他图片放在技术解读或事件还原段落中
-- 格式：![简短描述](url)`
+以下是与话题相关的图片，每张都附有描述。请根据描述判断图片内容，在文章合适的位置插入：
+${meta.images.map((img, i) => `- 图${i + 1}: ${img.url}（${img.alt || "无描述"}）`).join("\n")}
+
+插图要求：
+- 根据图片描述判断它适合放在哪个段落，不要乱放
+- 如果图片描述与当前段落内容不相关，就不要插入该图片
+- 格式：![使用图片自带的描述](url)
+- 不需要把所有图片都用上，只用真正相关的`
     : `\n## 插图
 没有可用的配图。请用其他排版元素增强视觉效果：
 - 用 > 引用块突出核心观点和 HN 评论
