@@ -78,8 +78,9 @@ export async function scoreClusters(
 
   // Build per-cluster metrics
   const clusterMetrics = clusters.map((cluster) => {
-    // Aggregate appearances across all stories in the cluster
-    let totalAppearances = 0;
+    // Aggregate appearances across all stories in the cluster (use average, not sum)
+    let sumAppearances = 0;
+    let storyCount = 0;
     let maxScore = 0;
     let maxComments = 0;
     let firstScore = 0;
@@ -89,7 +90,8 @@ export async function scoreClusters(
     for (const storyId of cluster.storyIds) {
       const data = storyMap.get(storyId);
       if (!data) continue;
-      totalAppearances += data.appearances;
+      sumAppearances += data.appearances;
+      storyCount++;
       maxScore = Math.max(maxScore, data.maxScore);
       maxComments = Math.max(maxComments, data.maxComments);
       // Use primary story's score trajectory for growth
@@ -99,6 +101,8 @@ export async function scoreClusters(
         commentGrowth = data.maxComments; // approximate
       }
     }
+
+    const totalAppearances = storyCount > 0 ? Math.round(sumAppearances / storyCount) : 0;
 
     return {
       cluster,

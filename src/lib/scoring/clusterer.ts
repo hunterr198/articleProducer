@@ -147,7 +147,25 @@ ${storyList}
       }
     }
 
-    return validGroups;
+    // Split catch-all clusters back into individual stories
+    const catchAllPattern = /其他|独立话题|杂项|混合|未分类|miscellaneous|uncategorized/i;
+    const finalGroups: AIClusterGroup[] = [];
+    for (const group of validGroups) {
+      if (catchAllPattern.test(group.label) && group.storyIds.length > 1) {
+        // Catch-all detected — split each story into its own cluster
+        for (const storyId of group.storyIds) {
+          const story = stories.find((s) => s.id === storyId);
+          finalGroups.push({
+            label: story?.title.slice(0, 30) ?? `Story ${storyId}`,
+            storyIds: [storyId],
+          });
+        }
+      } else {
+        finalGroups.push(group);
+      }
+    }
+
+    return finalGroups;
   } catch (err) {
     console.error("AI clustering failed, falling back to individual clusters:", err);
     // Fallback: each story is its own cluster
