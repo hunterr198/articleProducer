@@ -86,28 +86,29 @@ export async function reviewArticle(
 
 // --- Qwen 联网搜索能力 ---
 
-// 搜索相关图片 URL
-export async function searchImages(topic: string): Promise<string[]> {
+// 搜索同话题的文章 URL，用于后续抓取图片
+export async function searchRelatedArticles(topic: string): Promise<string[]> {
   try {
     const result = await withRetry(() =>
       qwenChat(
-        "你是一个图片搜索助手。请搜索相关图片并返回可直接访问的图片URL。",
-        `请搜索以下科技话题相关的图片URL。
+        "你是一个新闻搜索助手。请搜索与给定话题相关的新闻报道或博客文章，返回文章页面的 URL。",
+        `请搜索以下科技话题的相关报道文章 URL。
 
 话题：${topic}
 
 要求：
-- 找产品截图、架构图、技术示意图、新闻配图
-- 返回可以直接在浏览器中打开的图片 URL（https 开头）
-- 如果搜索到的图片来自新闻网站或博客，直接返回图片的 src 地址
+- 找包含配图的新闻报道、博客文章、技术分析
+- 优先找知名科技媒体（TechCrunch, The Verge, Ars Technica, 36kr, 机器之心等）
+- 返回文章页面 URL（不是图片 URL），https 开头
+- 只返回 2-3 个最相关的
 
-返回 JSON：{"images": ["url1", "url2"]}
-如果找不到可直接访问的图片URL，返回：{"images": []}`,
+返回 JSON：{"urls": ["url1", "url2"]}
+如果找不到相关报道，返回：{"urls": []}`,
         { search: true, json: true }
       )
     );
     const parsed = JSON.parse(result);
-    const urls = parsed.images ?? [];
+    const urls = parsed.urls ?? [];
     return urls.filter((url: string) =>
       url.startsWith("https://") && url.length > 20
     ).slice(0, 3);

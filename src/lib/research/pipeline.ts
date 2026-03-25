@@ -5,7 +5,7 @@ import { scrapeUrl } from "./scraper";
 import { searchWeb } from "./search";
 import { fetchStoryWithComments } from "@/lib/hn/algolia-api";
 import { analyzeMaterials } from "@/lib/ai/gpt";
-import { searchImages } from "@/lib/ai/qwen";
+import { searchRelatedArticles } from "@/lib/ai/qwen";
 import { downloadImages } from "./image-downloader";
 import type { MaterialPack } from "@/lib/ai/types";
 
@@ -43,9 +43,14 @@ export async function runResearch(story: {
   const originalContent = scrapeResult.content;
   let images = scrapeResult.images;
 
-  // 如果爬虫没抓到有效图片，用 Qwen 联网搜索补充
+  // 如果爬虫没抓到有效图片，搜索同话题文章并抓取其中的图片
   if (images.length === 0) {
-    images = await searchImages(story.title);
+    const relatedUrls = await searchRelatedArticles(story.title);
+    for (const url of relatedUrls) {
+      const related = await scrapeUrl(url);
+      images.push(...related.images);
+      if (images.length > 0) break;
+    }
   }
 
   // 下载图片到本地，用本站 URL 替代外链
@@ -166,9 +171,14 @@ export async function runClusterResearch(cluster: {
   }
   let images = Array.from(new Set(allImages));
 
-  // 5. If no images found from scraping, try searchImages(cluster.label)
+  // 5. If no images found from scraping, search related articles and scrape their images
   if (images.length === 0) {
-    images = await searchImages(cluster.label);
+    const relatedUrls = await searchRelatedArticles(cluster.label);
+    for (const url of relatedUrls) {
+      const related = await scrapeUrl(url);
+      images.push(...related.images);
+      if (images.length > 0) break;
+    }
   }
 
   // 下载图片到本地，用本站 URL 替代外链
