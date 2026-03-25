@@ -32,12 +32,12 @@ export async function runResearch(story: {
       : scrapeUrl(story.url),
 
     // B: Fetch HN comments
-    fetchStoryWithComments(story.id).then((data) =>
-      data?.comments.map((c) => ({ author: c.author, text: c.text })) ?? []
-    ),
+    fetchStoryWithComments(story.id)
+      .then((data) => data?.comments.map((c) => ({ author: c.author, text: c.text })) ?? [])
+      .catch(() => [] as { author: string; text: string }[]),
 
     // C: Web search for supplementary context
-    searchWeb(story.title, 3),
+    searchWeb(story.title, 3).catch(() => []),
   ]);
 
   const originalContent = scrapeResult.content;
@@ -122,13 +122,13 @@ export async function runClusterResearch(cluster: {
 
   // 3. Fetch HN comments for ALL stories (in parallel)
   const commentsPromises = clusterStories.map((s) =>
-    fetchStoryWithComments(s.id).then(
-      (data) => data?.comments.map((c) => ({ author: c.author, text: c.text })) ?? []
-    )
+    fetchStoryWithComments(s.id)
+      .then((data) => data?.comments.map((c) => ({ author: c.author, text: c.text })) ?? [])
+      .catch(() => [] as { author: string; text: string }[])
   );
 
   // 4. Web search using cluster label
-  const webSearchPromise = searchWeb(cluster.label, 3);
+  const webSearchPromise = searchWeb(cluster.label, 3).catch(() => []);
 
   // Run all in parallel
   const [scrapeResults, allComments, webSearchResults] = await Promise.all([
