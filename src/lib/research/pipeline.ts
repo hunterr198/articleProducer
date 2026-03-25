@@ -164,7 +164,7 @@ export async function runClusterResearch(cluster: {
   for (const result of scrapeResults) {
     allImages.push(...result.images);
   }
-  let images = Array.from(new Set(allImages)).slice(0, 5);
+  let images = Array.from(new Set(allImages));
 
   // 5. If no images found from scraping, try searchImages(cluster.label)
   if (images.length === 0) {

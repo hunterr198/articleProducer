@@ -12,7 +12,7 @@ export async function scrapeUrl(url: string): Promise<ScrapeResult> {
 
     const res = await fetch(url, {
       signal: controller.signal,
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; ArticleProducer/1.0)" },
+      headers: { "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36" },
     });
     clearTimeout(timeout);
 
@@ -22,8 +22,8 @@ export async function scrapeUrl(url: string): Promise<ScrapeResult> {
 
     if (result.content.length >= 200) return result;
 
-    // Fallback: puppeteer for JS-rendered pages
-    return await scrapeWithPuppeteer(url);
+    // Fallback: Jina Reader for JS-rendered / anti-scraping pages
+    return await scrapeWithJinaReader(url);
   } catch {
     return { content: "", images: [] };
   }
@@ -92,7 +92,7 @@ function extractContent(html: string, url: string): ScrapeResult {
       .text()
       .replace(/^Title:\s*/i, "")
       .trim();
-    return { content: `${title}\n\n${abstract}`, images: images.slice(0, 5) };
+    return { content: `${title}\n\n${abstract}`, images: images.slice(0, 10) };
   }
 
   // Try semantic elements first
@@ -127,19 +127,43 @@ function extractContent(html: string, url: string): ScrapeResult {
   // Clean up whitespace
   content = content.replace(/\s+/g, " ").trim().slice(0, 10000);
 
-  return { content, images: images.slice(0, 5) }; // 最多保留 5 张图
+  return { content, images: images.slice(0, 10) };
 }
 
-async function scrapeWithPuppeteer(url: string): Promise<ScrapeResult> {
+async function scrapeWithJinaReader(url: string): Promise<ScrapeResult> {
   try {
-    const puppeteer = await import("puppeteer");
-    const browser = await puppeteer.default.launch({ headless: true });
-    const page = await browser.newPage();
-    await page.setUserAgent("Mozilla/5.0 (compatible; ArticleProducer/1.0)");
-    await page.goto(url, { waitUntil: "networkidle2", timeout: 10000 });
-    const html = await page.content();
-    await browser.close();
-    return extractContent(html, url);
+    const res = await fetch(`https://r.jina.ai/${url}`, {
+      signal: AbortSignal.timeout(30000),
+      headers: {
+        Accept: "text/markdown",
+        "X-No-Cache": "true",
+      },
+    });
+
+    if (!res.ok) return { content: "", images: [] };
+    const markdown = await res.text();
+
+    // 从 Markdown 中提取图片 URL: ![alt](url)
+    const images: string[] = [];
+    const imgRegex = /!\[[^\]]*\]\(([^)]+)\)/g;
+    let match;
+    while ((match = imgRegex.exec(markdown)) !== null) {
+      const imgUrl = match[1];
+      if (imgUrl.startsWith("http") && !imgUrl.endsWith(".svg")) {
+        images.push(imgUrl);
+      }
+    }
+
+    // 去掉 Markdown 图片语法和链接语法，保留纯文本
+    const content = markdown
+      .replace(/!\[[^\]]*\]\([^)]+\)/g, "")
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+      .replace(/[#*_>`~-]/g, "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 10000);
+
+    return { content, images: images.slice(0, 10) };
   } catch {
     return { content: "", images: [] };
   }
