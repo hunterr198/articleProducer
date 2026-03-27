@@ -283,6 +283,8 @@ export async function aiClassifyBatch(
 
 **不通过**的选题：传统软件工程、Web 开发、编程语言、操作系统、网络协议、加密货币、游戏、纯政治、个人理财、硬件 DIY、计算机历史。即使是前沿科技（量子计算、生物技术），如果跟 AI 没有直接关联也不通过。
 
+**易混淆的边界**：隐私监控立法（如 Chat Control、社交媒体禁令）、互联网审查政策、数据保护法规——这些虽然可能涉及自动化扫描技术，但核心争议是隐私权/言论自由，不是 AI 本身。只有当话题的焦点明确是 AI 技术的应用或治理时才通过（如"EU AI Act"专门规范 AI），单纯的互联网/隐私监管不通过。
+
 注意：你收到的帖子都是标题里没有明显 AI 关键词的——它们已经通过了关键词筛选。你的任务是判断这些"看起来不像 AI 话题"的帖子是否其实跟 AI 有直接关系。
 
 域名是重要线索——来自 arxiv.org、openai.com、anthropic.com 的内容大概率相关；来自普通新闻网站的需要看标题内容。`;
@@ -304,6 +306,8 @@ export async function aiClassifyBatch(
 ❌ "Why I Left Google After 15 Years" → not relevant, 0.85, "个人职业故事，除非明确提到 AI 团队"
 ❌ "How We Cut Our AWS Bill by 60%" → not relevant, 0.9, "云成本优化，跟 AI 无直接关系"
 ❌ "A New Era for Quantum Error Correction" (nature.com) → not relevant, 0.8, "量子计算，前沿科技但跟 AI 没有直接关联"
+❌ "EU Parliament votes to stop Chat Control mass surveillance" → not relevant, 0.8, "隐私/监控立法，核心争议是隐私权而非 AI 技术，扫描技术只是手段不是话题焦点"
+❌ "Social media bans for teens pass Congress" → not relevant, 0.85, "互联网监管政策，跟 AI 没有直接关系"
 
 ---
 

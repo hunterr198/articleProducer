@@ -21,7 +21,11 @@ export async function scrapeUrl(url: string): Promise<ScrapeResult> {
     });
     clearTimeout(timeout);
 
-    if (!res.ok) return { content: "", images: [] };
+    if (!res.ok) {
+      // Direct fetch failed (blocked/403/etc) → try Jina Reader
+      console.log(`[scraper] direct fetch ${res.status} for ${url.slice(0, 60)}, trying Jina`);
+      return await scrapeWithJinaReader(url);
+    }
     const html = await res.text();
     const result = extractContent(html, url);
 
@@ -29,8 +33,14 @@ export async function scrapeUrl(url: string): Promise<ScrapeResult> {
 
     // Fallback: Jina Reader for JS-rendered / anti-scraping pages
     return await scrapeWithJinaReader(url);
-  } catch {
-    return { content: "", images: [] };
+  } catch (err) {
+    // Network error (timeout, DNS, GFW block) → try Jina Reader
+    console.log(`[scraper] direct fetch error for ${url.slice(0, 60)}: ${String(err).slice(0, 80)}, trying Jina`);
+    try {
+      return await scrapeWithJinaReader(url);
+    } catch {
+      return { content: "", images: [] };
+    }
   }
 }
 
