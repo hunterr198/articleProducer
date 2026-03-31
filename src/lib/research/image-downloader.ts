@@ -29,12 +29,11 @@ export async function downloadImages(
     .map((r) => r.value)
     .filter((v): v is ImageInfo => v !== null);
 
-  // Log results for debugging
-  const failed = results.filter(
-    (r) => r.status === "rejected" || (r.status === "fulfilled" && r.value === null)
-  ).length;
-  if (failed > 0) {
-    console.log(`[image-dl] story=${storyId}: ${downloaded.length}/${images.length} downloaded, ${failed} failed`);
+  // Always log image download results for debugging
+  const failed = images.length - downloaded.length;
+  console.log(`[image-dl] story=${storyId}: ${downloaded.length}/${images.length} downloaded${failed > 0 ? `, ${failed} failed` : ""}`);
+  if (downloaded.length === 0 && images.length > 0) {
+    console.log(`[image-dl] ALL images failed for story=${storyId}. Sample URLs: ${images.slice(0, 3).map(i => i.url.slice(0, 80)).join(", ")}`);
   }
 
   return downloaded;

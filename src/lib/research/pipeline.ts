@@ -47,12 +47,7 @@ export async function runResearch(story: {
 
   // 如果爬虫没抓到有效图片，搜索同话题文章并抓取其中的图片
   if (images.length === 0) {
-    const relatedUrls = await searchRelatedArticles(story.title);
-    for (const url of relatedUrls) {
-      const related = await scrapeUrl(url);
-      images.push(...related.images);
-      if (images.length > 0) break;
-    }
+    images = await searchAndScrapeImages(story.title);
   }
 
   // 下载图片到本地，用本站 URL 替代外链
@@ -181,12 +176,7 @@ export async function runClusterResearch(cluster: {
 
   // 5. If no images found from scraping, search related articles and scrape their images
   if (images.length === 0) {
-    const relatedUrls = await searchRelatedArticles(cluster.label);
-    for (const url of relatedUrls) {
-      const related = await scrapeUrl(url);
-      images.push(...related.images);
-      if (images.length > 0) break;
-    }
+    images = await searchAndScrapeImages(cluster.label);
   }
 
   // 下载图片到本地，用本站 URL 替代外链
@@ -245,4 +235,39 @@ export async function runClusterResearch(cluster: {
     webSearchResults,
     materialPack,
   };
+}
+
+/**
+ * Search for related articles and scrape ALL of them for images (don't stop early).
+ * The old logic broke after the first URL that yielded any images, but those images
+ * might all fail to download later. Collecting from all URLs gives downloadImages()
+ * more candidates to work with.
+ */
+async function searchAndScrapeImages(topic: string): Promise<ImageInfo[]> {
+  const relatedUrls = await searchRelatedArticles(topic);
+  if (relatedUrls.length === 0) {
+    console.log(`[research] no related URLs found for image search: "${topic.slice(0, 60)}"`);
+    return [];
+  }
+
+  const images: ImageInfo[] = [];
+  const seenUrls = new Set<string>();
+
+  // Scrape all related URLs in parallel instead of sequentially
+  const results = await Promise.allSettled(
+    relatedUrls.map((url) => scrapeUrl(url))
+  );
+
+  for (const result of results) {
+    if (result.status !== "fulfilled") continue;
+    for (const img of result.value.images) {
+      if (!seenUrls.has(img.url)) {
+        seenUrls.add(img.url);
+        images.push(img);
+      }
+    }
+  }
+
+  console.log(`[research] image fallback search: ${relatedUrls.length} URLs → ${images.length} candidate images`);
+  return images;
 }

@@ -124,16 +124,23 @@ async function generateClusterDeepDive(dailyScoreId: number): Promise<number> {
       images,
     });
 
-    // 8. 3-pass review
-    const reviewed = await reviewArticle(draft, materialPackStr, "deep_dive");
+    // 8. Build sources section programmatically (don't rely on AI to preserve it)
+    const sourcesMarkdown = buildSourcesSection(sources);
 
-    // 9. Save to articles table
+    // 9. Strip AI-generated sources before review (review passes tend to drop them)
+    const draftBody = stripSourcesSection(draft);
+
+    // 10. 3-pass review (on body only, without sources)
+    const reviewed = await reviewArticle(draftBody, materialPackStr, "deep_dive");
+    const reviewedBody = stripSourcesSection(reviewed.revised);
+
+    // 11. Save with guaranteed sources appended
     await db
       .update(articles)
       .set({
         title: outline.title,
-        contentMd: draft,
-        contentReviewed: reviewed.revised,
+        contentMd: draftBody + sourcesMarkdown,
+        contentReviewed: reviewedBody + sourcesMarkdown,
         outline: outlineStr,
         reviewLog: JSON.stringify(reviewed.log),
         status: "reviewed",
@@ -276,4 +283,21 @@ export async function generateDailyDigest(dateStr: string): Promise<{
   }
 
   return { deepDiveIds, briefIds, errors };
+}
+
+// --- Helpers: guarantee sources section survives review passes ---
+
+function buildSourcesSection(
+  sources: Array<{ title: string; url: string; hnUrl: string; score: number }>
+): string {
+  if (sources.length === 0) return "";
+  const lines = sources
+    .map((s) => `- [${s.title}](${s.url})（HN ${s.score} 分）[讨论](${s.hnUrl})`)
+    .join("\n");
+  return `\n\n---\n\n**来源与参考**\n${lines}`;
+}
+
+function stripSourcesSection(text: string): string {
+  // Remove AI-generated sources block at the end of the article
+  return text.replace(/\n*---\n+\*\*来源与参考\*\*[\s\S]*$/, "").trimEnd();
 }
