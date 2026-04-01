@@ -13,7 +13,7 @@
 
 import { db } from "@/lib/db";
 import { stories, snapshots, dailyScores, topicClusters, articles } from "@/lib/db/schema";
-import { and, gte, lt, eq, sql, inArray } from "drizzle-orm";
+import { and, gte, lt, eq, sql, inArray, ne } from "drizzle-orm";
 import { filterTechStories } from "@/lib/hn/topic-filter";
 import { clusterStories } from "@/lib/scoring/clusterer";
 import { scoreClusters } from "@/lib/scoring/scorer";
@@ -30,6 +30,57 @@ export async function runDailyAggregation(dateStr: string): Promise<{
 }> {
   const dayStart = new Date(`${dateStr}T00:00:00+08:00`);
   const dayEnd = new Date(`${dateStr}T23:59:59+08:00`);
+
+  // Idempotency: clear previous aggregation data for this date so re-runs
+  // don't accumulate duplicate scores or stale selections.
+  // Only delete scores that haven't already been used to generate articles.
+  const scoresWithArticles = await db
+    .select({ id: articles.dailyScoreId })
+    .from(articles)
+    .innerJoin(dailyScores, eq(articles.dailyScoreId, dailyScores.id))
+    .where(
+      and(
+        eq(dailyScores.date, dateStr),
+        ne(articles.status, "failed")
+      )
+    );
+  const protectedScoreIds = new Set(scoresWithArticles.map((r) => r.id).filter((id): id is number => id !== null));
+
+  const existingScores = await db
+    .select({ id: dailyScores.id })
+    .from(dailyScores)
+    .where(eq(dailyScores.date, dateStr));
+
+  const toDelete = existingScores.filter((s) => !protectedScoreIds.has(s.id)).map((s) => s.id);
+  if (toDelete.length > 0) {
+    await db.delete(dailyScores).where(inArray(dailyScores.id, toDelete));
+  }
+
+  // Also clean up orphaned topic clusters for re-runs
+  const existingClusters = await db
+    .select({ id: topicClusters.id })
+    .from(topicClusters)
+    .where(eq(topicClusters.date, dateStr));
+
+  if (existingClusters.length > 0) {
+    // Only delete clusters not referenced by protected scores
+    const protectedClusterIds = new Set<number>();
+    if (protectedScoreIds.size > 0) {
+      const protectedRows = await db
+        .select({ clusterId: dailyScores.clusterId })
+        .from(dailyScores)
+        .where(inArray(dailyScores.id, Array.from(protectedScoreIds)));
+      for (const r of protectedRows) {
+        if (r.clusterId !== null) protectedClusterIds.add(r.clusterId);
+      }
+    }
+    const clustersToDelete = existingClusters
+      .filter((c) => !protectedClusterIds.has(c.id))
+      .map((c) => c.id);
+    if (clustersToDelete.length > 0) {
+      await db.delete(topicClusters).where(inArray(topicClusters.id, clustersToDelete));
+    }
+  }
 
   // Step 1: Get all unique stories from today's snapshots
   const todaySnapshots = await db

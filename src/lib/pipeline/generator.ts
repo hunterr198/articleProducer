@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { articles, dailyScores, stories, topicClusters } from "@/lib/db/schema";
-import { eq, and, desc, inArray } from "drizzle-orm";
+import { eq, and, desc, inArray, sql } from "drizzle-orm";
 import { runClusterResearch } from "@/lib/research/pipeline";
 import { generateOutline, generateBriefSummary } from "@/lib/ai/gpt";
 import {
@@ -257,11 +257,24 @@ export async function generateDailyDigest(dateStr: string): Promise<{
     .where(and(eq(dailyScores.date, dateStr), eq(dailyScores.status, "selected_brief")))
     .orderBy(desc(dailyScores.finalScore));
 
+  // Skip scores that already have non-failed articles (idempotency guard)
+  const existingArticles = await db
+    .select({ dailyScoreId: articles.dailyScoreId })
+    .from(articles)
+    .where(
+      and(
+        inArray(articles.dailyScoreId, [...deepScores, ...briefScores].map((s) => s.id)),
+        sql`${articles.status} != 'failed'`
+      )
+    );
+  const alreadyGenerated = new Set(existingArticles.map((a) => a.dailyScoreId));
+
   // 2. Generate deep dive articles (sequential)
   const deepDiveIds: number[] = [];
   const errors: string[] = [];
 
   for (const score of deepScores) {
+    if (alreadyGenerated.has(score.id)) continue;
     try {
       const id = await generateClusterDeepDive(score.id);
       deepDiveIds.push(id);
@@ -274,6 +287,7 @@ export async function generateDailyDigest(dateStr: string): Promise<{
   const briefIds: number[] = [];
 
   for (const score of briefScores) {
+    if (alreadyGenerated.has(score.id)) continue;
     try {
       const id = await generateClusterBrief(score.id);
       briefIds.push(id);
